@@ -65,6 +65,21 @@ export async function fetchTodayGames(): Promise<Game[]> {
 }
 
 /**
+ * Fetch games for a specific date (YYYY-MM-DD)
+ */
+export async function fetchGamesByDate(date: string): Promise<Game[]> {
+    try {
+        const res = await fetch(`${BASE_URL}/games/date/${date}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: GamesResponse = await res.json();
+        return data.games;
+    } catch (error) {
+        console.error(`Failed to fetch games for ${date}:`, error);
+        return [];
+    }
+}
+
+/**
  * Fetch live games only
  */
 export async function fetchLiveGames(): Promise<Game[]> {
@@ -93,4 +108,37 @@ export function getGameStatusInfo(game: Game): { text: string; isLive: boolean; 
     }
 
     return { text, isLive, isFinal };
+}
+
+export async function fetchBoxScore(gameId: string): Promise<any> {
+    try {
+        const res = await fetch(`${BASE_URL}/games/${gameId}/boxscore`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } catch (error) {
+        console.error('Failed to fetch boxscore:', error);
+        return null;
+    }
+}
+
+export async function fetchPlayByPlay(gameId: string): Promise<any> {
+    try {
+        const res = await fetch(`${BASE_URL}/games/${gameId}/playbyplay`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } catch (error) {
+        console.error('Failed to fetch playbyplay:', error);
+        return null;
+    }
+}
+
+export async function fetchStandings(): Promise<any> {
+    try {
+        const res = await fetch(`${BASE_URL}/games/standings`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } catch (error) {
+        console.error('Failed to fetch standings:', error);
+        return null;
+    }
 }

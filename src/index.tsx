@@ -2,12 +2,15 @@
  * NBA-TUI Main Application
  * Map-centric view with games positioned at city locations
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
 import Spinner from 'ink-spinner';
-import { fetchTodayGames, checkHealth, type Game } from './services/apiClient.js';
+import { format, addDays, subDays, isSameDay } from 'date-fns';
+import { fetchTodayGames, fetchGamesByDate, checkHealth, type Game } from './services/apiClient.js';
 import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
 import { getTeamPosition } from './data/teamCoords.js';
+import { GameDetailPage } from './pages/GameDetailPage.js';
+import { StandingsSidebar } from './components/StandingsSidebar.js';
 
 // Get geographic positions for all games
 function getGamePositions(games: Game[]): Array<{ idx: number; x: number; y: number }> {
@@ -18,7 +21,6 @@ function getGamePositions(games: Game[]): Array<{ idx: number; x: number; y: num
 }
 
 // Find nearest game in a given direction
-// Direction: 'up' = smaller y, 'down' = larger y, 'left' = smaller x, 'right' = larger x
 function findNearestGame(
     games: Game[],
     currentIndex: number,
@@ -28,7 +30,8 @@ function findNearestGame(
 
     const positions = getGamePositions(games);
     const current = positions.find(p => p.idx === currentIndex);
-    if (!current) return currentIndex;
+    // If current selected game is not in list (e.g. filtered out or weird state), default to 0
+    if (!current) return 0;
 
     let bestIdx = currentIndex;
     let bestScore = Infinity;
@@ -46,25 +49,21 @@ function findNearestGame(
 
         switch (direction) {
             case 'up':
-                // y should be smaller (north)
-                isValidDirection = dy < -2; // At least 2% difference
+                isValidDirection = dy < -2;
                 primaryDistance = Math.abs(dy);
                 secondaryDistance = Math.abs(dx);
                 break;
             case 'down':
-                // y should be larger (south)
                 isValidDirection = dy > 2;
                 primaryDistance = Math.abs(dy);
                 secondaryDistance = Math.abs(dx);
                 break;
             case 'left':
-                // x should be smaller (west)
                 isValidDirection = dx < -2;
                 primaryDistance = Math.abs(dx);
                 secondaryDistance = Math.abs(dy);
                 break;
             case 'right':
-                // x should be larger (east)
                 isValidDirection = dx > 2;
                 primaryDistance = Math.abs(dx);
                 secondaryDistance = Math.abs(dy);
@@ -72,7 +71,6 @@ function findNearestGame(
         }
 
         if (isValidDirection) {
-            // Score: prefer closer in primary direction, use secondary as tiebreaker
             const score = primaryDistance + secondaryDistance * 0.3;
             if (score < bestScore) {
                 bestScore = score;
@@ -81,23 +79,20 @@ function findNearestGame(
         }
     }
 
-    // If no game found in that direction, wrap around to opposite side
+    // Wrap around logic if no game found in direction
     if (bestIdx === currentIndex) {
-        // Find the game furthest in the opposite direction
         let furthestIdx = currentIndex;
         let furthestValue = -Infinity;
 
         for (const pos of positions) {
             if (pos.idx === currentIndex) continue;
-
             let value = 0;
             switch (direction) {
-                case 'up': value = pos.y; break;      // Furthest south
-                case 'down': value = -pos.y; break;   // Furthest north
-                case 'left': value = pos.x; break;    // Furthest east
-                case 'right': value = -pos.x; break;  // Furthest west
+                case 'up': value = pos.y; break;
+                case 'down': value = -pos.y; break;
+                case 'left': value = pos.x; break;
+                case 'right': value = -pos.x; break;
             }
-
             if (value > furthestValue) {
                 furthestValue = value;
                 furthestIdx = pos.idx;
@@ -117,24 +112,55 @@ function percentToChar(percent: number, maxChars: number): number {
 // Create a marker for a game without number prefix
 function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolean = false): string {
     const isLive = game.gameStatus === 2;
+    const isFinal = game.gameStatus === 3;
+    const isFuture = game.gameStatus === 1;
 
     const away = game.awayTeam.teamTricode;
     const home = game.homeTeam.teamTricode;
     const awayScore = game.awayTeam.score;
     const homeScore = game.homeTeam.score;
 
-    if (isSelected) {
-        return `[${away} ${awayScore}-${homeScore} ${home}]`;
-    } else if (isHighlighted) {
-        return `»${away}-${home}«`;
-    } else if (isLive) {
-        return `● ${away}-${home}`;
+    let content = '';
+
+    if (isFuture) {
+        // Future: JUST "AWY-HME" (No scores)
+        content = `${away}-${home}`;
     } else {
-        return `${away}-${home}`;
+        // Live or Final: "AWY 100-90 HME" or "100-90"
+        // Space is tight on map.
+        // Format: "AWY SSS-SSS HME" might be too long.
+        // Let's stick to "AWY-HME" if we can't fit scores?
+        // User asked: "For past games, please showing both score."
+        // Let's try compact: "AWY(100)-HME(90)" or "100-90"
+        // Actually, existing logic was just "AWY-HME".
+        // Let's force score display if space permits or just minimal.
+
+        // If selected, we show full detail in the Detail box anyway.
+        // For the marker, let's try to fit score? 
+        // Marker length affects collision. 
+        // Let's try: "AWY 100-90 HME" is very long (15 chars).
+        // Maybe just "100-90" if finalized? But then we lose team names.
+        // User request: "If it's past game, please showing both score."
+        // Maybe he means in the DETAIL view? Or on the map?
+        // "Right click on map display next day... left click display previous day and result."
+        // Implies on the map.
+
+        // Let's try compact score: "LAL 102-99 BOS"
+        content = `${away} ${awayScore}-${homeScore} ${home}`;
+    }
+
+    if (isSelected) {
+        return `[${content}]`;
+    } else if (isHighlighted) {
+        return `»${content}«`;
+    } else if (isLive) {
+        return `● ${content}`;
+    } else {
+        return content;
     }
 }
 
-// Helper to check if game matches filter (only checks Tricodes prefix)
+// Helper to check if game matches filter
 function checkGameMatchesFilter(game: Game, filter: string): boolean {
     if (!filter) return false;
     const lowerFilter = filter.toLowerCase();
@@ -150,14 +176,12 @@ function embedGamesInMap(
     termWidth: number,
     searchFilter: string = ''
 ): { lines: string[]; gameColors: Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean }> } {
-    // Clone map lines
     const lines = mapLines.map(l => l.padEnd(termWidth, ' ').slice(0, termWidth));
     const gameColors = new Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean }>();
 
     const maxHeight = lines.length;
     const maxWidth = termWidth;
 
-    // Calculate positions for all games
     const gamesWithPos = games.map((game, idx) => {
         const pos = getTeamPosition(game.homeTeam.teamTricode);
         const isSelected = idx === selectedIndex;
@@ -175,50 +199,42 @@ function embedGamesInMap(
         };
     });
 
-    // Sort by column to place left-most games first
     gamesWithPos.sort((a, b) => a.col - b.col);
 
-    // Track occupied ranges per row: Map<row, Array<{start, end}>>
     const occupiedRanges = new Map<number, Array<{ start: number; end: number }>>();
 
-    // Place markers with collision detection
     for (const gamePos of gamesWithPos) {
-        const { game, idx, markerLen, isLive, isSelected, isHighlighted } = gamePos;
+        const { idx, markerLen, isLive, isSelected, isHighlighted } = gamePos;
         let { row, col } = gamePos;
-        const marker = createGameMarker(game, isSelected, isHighlighted);
+        const marker = createGameMarker(gamePos.game, isSelected, isHighlighted);
 
-        // Ensure within bounds
         col = Math.max(0, Math.min(col, maxWidth - markerLen));
         row = Math.max(0, Math.min(row, maxHeight - 1));
 
-        // Check for collision and find free row
+        const MIN_GAP = 3; // Minimum characters between games on the same line
+
         let attempts = 0;
         while (attempts < maxHeight) {
             const ranges = occupiedRanges.get(row) || [];
             const hasCollision = ranges.some(r =>
-                (col < r.end && col + markerLen > r.start)
+                // Check intersection with padding
+                (col < r.end + MIN_GAP && col + markerLen > r.start - MIN_GAP)
             );
 
             if (!hasCollision) break;
-
-            // Try next row down, then wrap
             row = (row + 1) % maxHeight;
             attempts++;
         }
 
-        // Mark this range as occupied
         const ranges = occupiedRanges.get(row) || [];
         ranges.push({ start: col, end: col + markerLen });
         occupiedRanges.set(row, ranges);
 
-        // Insert marker into line
         const line = lines[row];
         if (line) {
             const before = line.slice(0, col);
             const after = line.slice(col + markerLen);
             lines[row] = before + marker + after;
-
-            // Track position for coloring
             gameColors.set(idx, { row, col, isLive, isSelected, isHighlighted });
         }
     }
@@ -227,6 +243,8 @@ function embedGamesInMap(
 }
 
 // Map Line component with colored markers
+import { TEAM_BG_COLORS } from './data/teamColors.js';
+
 function MapLine({ line, rowIndex, gameColors, games }: {
     line: string;
     rowIndex: number;
@@ -234,7 +252,7 @@ function MapLine({ line, rowIndex, gameColors, games }: {
     games: Game[];
 }) {
     // Find if any game marker is on this row
-    const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number }> = [];
+    const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string }> = [];
 
     gameColors.forEach((pos, gameIdx) => {
         if (pos.row === rowIndex) {
@@ -245,25 +263,22 @@ function MapLine({ line, rowIndex, gameColors, games }: {
                 isLive: pos.isLive,
                 isSelected: pos.isSelected,
                 isHighlighted: pos.isHighlighted,
-                gameIdx
+                gameIdx,
+                content: marker
             });
         }
     });
 
-    // If no markers, just render dim line
     if (markersOnRow.length === 0) {
         return <Text dimColor>{line}</Text>;
     }
 
-    // Sort markers by column
     markersOnRow.sort((a, b) => a.col - b.col);
 
-    // Build segments
     const segments: React.ReactNode[] = [];
     let lastEnd = 0;
 
     markersOnRow.forEach((marker, i) => {
-        // Add dim text before marker
         if (marker.col > lastEnd) {
             segments.push(
                 <Text key={`dim-${i}`} dimColor>
@@ -272,29 +287,82 @@ function MapLine({ line, rowIndex, gameColors, games }: {
             );
         }
 
-        // Add colored marker
-        const markerText = line.slice(marker.col, marker.col + marker.length);
-        let color = marker.isLive ? 'green' : 'yellow';
-        if (marker.isSelected) color = 'cyan';
+        const rawContent = marker.content;
+        const game = games[marker.gameIdx];
+        const away = game.awayTeam.teamTricode;
+        const home = game.homeTeam.teamTricode;
 
-        // Highlight logic
-        const isHighlighted = marker.isHighlighted;
+        const awayColor = TEAM_BG_COLORS[away] || '#333';
+        const homeColor = TEAM_BG_COLORS[home] || '#333';
+
+        const markerElements: React.ReactNode[] = [];
+
+        const renderText = (text: string, key: string, bg?: string) => {
+            if (!text) return null;
+
+            // Determine styles based on state
+            // Priority: Highlight > Team Badge > Default
+            let finalColor = marker.isLive ? 'green' : 'yellow';
+            let finalBg = undefined;
+            let finalBold = marker.isSelected;
+
+            if (marker.isHighlighted) {
+                finalBg = 'yellow';
+                finalColor = 'black';
+                finalBold = true;
+            } else if (bg) {
+                finalBg = bg;
+                finalColor = '#ffffff'; // Explicit hex white for badges
+                finalBold = true;     // Explicit bold for badges
+            } else if (marker.isSelected) {
+                finalColor = 'cyan';
+            }
+
+            return (
+                <Text
+                    key={key}
+                    color={finalColor}
+                    backgroundColor={finalBg}
+                    bold={finalBold}
+                >
+                    {text}
+                </Text>
+            );
+        };
+
+        const parts1 = rawContent.split(away);
+
+        if (parts1.length >= 2) {
+            const preAway = parts1[0];
+            const postAway = parts1.slice(1).join(away);
+
+            markerElements.push(renderText(preAway, `pre-${i}`));
+            markerElements.push(renderText(` ${away} `, `away-${i}`, awayColor));
+
+            const parts2 = postAway.split(home);
+            if (parts2.length >= 2) {
+                const mid = parts2[0];
+                const postHome = parts2.slice(1).join(home);
+
+                markerElements.push(renderText(mid, `mid-${i}`));
+                markerElements.push(renderText(` ${home} `, `home-${i}`, homeColor));
+                markerElements.push(renderText(postHome, `post-${i}`));
+            } else {
+                markerElements.push(renderText(postAway, `rest-${i}`));
+            }
+        } else {
+            markerElements.push(renderText(rawContent, `full-${i}`));
+        }
 
         segments.push(
-            <Text
-                key={`marker-${i}`}
-                color={isHighlighted ? 'black' : color}
-                backgroundColor={isHighlighted ? 'yellow' : undefined}
-                bold={marker.isSelected || isHighlighted}
-            >
-                {markerText}
+            <Text key={`marker-wrap-${i}`}>
+                {markerElements}
             </Text>
         );
 
         lastEnd = marker.col + marker.length;
     });
 
-    // Add remaining dim text
     if (lastEnd < line.length) {
         segments.push(
             <Text key="dim-end" dimColor>
@@ -309,7 +377,6 @@ function MapLine({ line, rowIndex, gameColors, games }: {
 // Selected game detail panel
 function GameDetail({ game }: { game: Game }) {
     const isLive = game.gameStatus === 2;
-
     return (
         <Box
             borderStyle="round"
@@ -341,182 +408,251 @@ function GameDetail({ game }: { game: Game }) {
 function App() {
     const { exit } = useApp();
     const [games, setGames] = useState<Game[]>([]);
+    const [currentDate, setCurrentDate] = useState<Date>(new Date());
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [connected, setConnected] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [view, setView] = useState<'map' | 'detail'>('map');
     const [searchFilter, setSearchFilter] = useState('');
     const [isSearching, setIsSearching] = useState(false);
+    const [showStandings, setShowStandings] = useState(false);
 
-    const termWidth = process.stdout.columns || 100;
-    const termHeight = process.stdout.rows || 40;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-    // Load games
-    const loadGames = async () => {
+    const loadGamesForDate = async (date: Date) => {
         setLoading(true);
-        const isConnected = await checkHealth();
-        setConnected(isConnected);
-        if (isConnected) {
-            const data = await fetchTodayGames();
-            setGames(data);
+
+        // Timezone Adjustment Logic:
+        // NBA games roughly happen 7pm - 1am ET (US).
+        // - In US (UTC-5 to UTC-8): This is the 'Same Day'.
+        // - In Europe/Asia (UTC+0 to UTC+8): This is 'Next Day' morning.
+        // So for users East of Atlantic (Offset <= 0), 'Today' in local time corresponds to 'Yesterday' in NBA Schedule.
+        // JS getTimezoneOffset() returns +ve for West of UTC (US=300), -ve for East (China=-480).
+
+        const offset = new Date().getTimezoneOffset();
+        let queryDate = date;
+
+        if (offset <= 0) {
+            // East of UTC (Europe, Asia) -> Shift back 1 day to get the "Morning" games
+            queryDate = subDays(date, 1);
         }
+
+        const dateStr = format(queryDate, 'yyyy-MM-dd');
+        let data: Game[] = [];
+
+        // Note: fetchTodayGames (live default) might handle logic differently, 
+        // but for specific dates we use the shift.
+        // Actually, let's trust the shift for consistency even for 'Today'.
+        data = await fetchGamesByDate(dateStr);
+
+        setGames(data);
         setLoading(false);
+        setLastUpdated(new Date());
+
+        if (data.length > 0) setSelectedIndex(0);
     };
 
+    const checkConnection = async () => {
+        const isHealthy = await checkHealth();
+        setConnected(isHealthy);
+    };
+
+    // Initial load & Date change
     useEffect(() => {
-        loadGames();
-        const interval = setInterval(loadGames, 30000);
-        return () => clearInterval(interval);
-    }, []);
+        loadGamesForDate(currentDate);
+        checkConnection();
+    }, [currentDate]);
+
+    // Auto-refresh (only if viewing today)
+    useEffect(() => {
+        const timer = setInterval(() => {
+            if (isSameDay(currentDate, new Date())) {
+                loadGamesForDate(currentDate);
+                checkConnection();
+            }
+        }, 30000);
+        return () => clearInterval(timer);
+    }, [currentDate]);
 
     useInput((input, key) => {
-        // Global keys
-        if (key.escape) {
-            setIsSearching(false);
-            setSearchFilter('');
+        if (view === 'detail') return;
+
+        if (key.escape || input === 'q') {
+            exit();
             return;
         }
 
-        // Search Mode
         if (isSearching) {
             if (key.return) {
-                // Select first highlighted game if any
-                // (This logic is simple, ideally we find the first match)
                 setIsSearching(false);
-                // logic to jump to first match could be adding here:
-                const matchIdx = games.findIndex(g => checkGameMatchesFilter(g, searchFilter));
-                if (matchIdx !== -1) setSelectedIndex(matchIdx);
-                setSearchFilter('');
-                return;
-            }
-            if (key.backspace || key.delete) {
-                setSearchFilter(prev => prev.slice(0, -1));
-                if (searchFilter.length <= 1 && (key.backspace || key.delete)) {
-                    // Optionally exit search if empty? No, keep focus.
+                // Update selection to the first matching game
+                if (searchFilter) {
+                    const filter = searchFilter.toLowerCase();
+                    const foundIdx = games.findIndex(g =>
+                        g.homeTeam.teamTricode.toLowerCase().includes(filter) ||
+                        g.homeTeam.teamCity.toLowerCase().includes(filter) ||
+                        g.homeTeam.teamName.toLowerCase().includes(filter) ||
+                        g.awayTeam.teamTricode.toLowerCase().includes(filter) ||
+                        g.awayTeam.teamCity.toLowerCase().includes(filter) ||
+                        g.awayTeam.teamName.toLowerCase().includes(filter)
+                    );
+                    if (foundIdx !== -1) {
+                        setSelectedIndex(foundIdx);
+                        // Also open detail immediately to satisfy "Enter is view detail"? 
+                        // User said: "press enter should view detail... but it views current..."
+                        // This implies they pressed Enter hoping to view.
+                        // Let's make it auto-view for better UX if they typed something specific.
+                        if (games.length > 0) setView('detail');
+                    }
                 }
-                return;
-            }
-            // Add char to filter
-            if (!key.ctrl && !key.meta && input.length === 1) {
+            } else if (key.backspace || key.delete) {
+                setSearchFilter(prev => prev.slice(0, -1));
+            } else if (input.length === 1 && !key.ctrl && !key.meta) {
                 setSearchFilter(prev => prev + input);
             }
             return;
         }
 
-        // Normal Mode
-        if (input === 'q') {
-            process.exit(0);
-        }
-        if (input === 'r') loadGames();
-
-        // Search toggle
         if (input === '/') {
             setIsSearching(true);
             return;
         }
 
-        // Tab to cycle through all games (simple sequential)
-        if (key.tab) {
-            if (key.shift) {
-                setSelectedIndex(prev => (prev - 1 + games.length) % Math.max(1, games.length));
-            } else {
-                setSelectedIndex(prev => (prev + 1) % Math.max(1, games.length));
-            }
+        if (input === 'r') {
+            loadGamesForDate(currentDate);
+            return;
         }
 
-        // Spatial navigation based on geographic position
-        if (key.rightArrow || input === 'l') {
-            setSelectedIndex(findNearestGame(games, selectedIndex, 'right'));
+        if (input === 's') {
+            setShowStandings(prev => !prev);
+            return;
         }
-        if (key.leftArrow || input === 'h') {
-            setSelectedIndex(findNearestGame(games, selectedIndex, 'left'));
+
+        if (key.return) {
+            if (games.length > 0) {
+                setView('detail');
+            }
+            return;
         }
-        if (key.upArrow || input === 'k') {
-            setSelectedIndex(findNearestGame(games, selectedIndex, 'up'));
+
+        if (key.upArrow) {
+            setSelectedIndex(prev => (prev > 0 ? prev - 1 : games.length - 1));
         }
-        if (key.downArrow || input === 'j') {
-            setSelectedIndex(findNearestGame(games, selectedIndex, 'down'));
+
+        if (key.downArrow) {
+            setSelectedIndex(prev => (prev < games.length - 1 ? prev + 1 : 0));
+        }
+
+        if (key.leftArrow) {
+            setCurrentDate(prev => subDays(prev, 1));
+        }
+
+        if (key.rightArrow) {
+            setCurrentDate(prev => addDays(prev, 1));
         }
     });
 
-    // Disconnected state
-    if (!connected && !loading) {
-        return (
-            <Box flexDirection="column" padding={2}>
-                <Text color="red">✗ Cannot connect to data service</Text>
-                <Text dimColor>Run: ./scripts/start-data-service.sh</Text>
-                <Text dimColor>Press 'r' to retry, 'q' to quit</Text>
-            </Box>
-        );
+    const termWidth = process.stdout.columns || 100;
+    const termHeight = process.stdout.rows || 40;
+
+    // Resolution check
+    const minMapWidth = 100;
+    const minFullWidth = 165;
+    const minHeight = 40;
+
+    const isMapCramped = termWidth < minMapWidth || termHeight < minHeight;
+    const isSidebarCramped = showStandings && termWidth < minFullWidth;
+
+    let warningHeight = 0;
+    if (isMapCramped || isSidebarCramped) {
+        warningHeight += 2; // borders
+        warningHeight += 1; // title
+        if (isMapCramped) warningHeight += 1;
+        if (isSidebarCramped) warningHeight += 1;
+        warningHeight += 1; // margin bottom
     }
 
-    // Loading state
-    if (loading && games.length === 0) {
-        return (
-            <Box flexDirection="column" padding={2} alignItems="center">
-                <Text color="cyan"><Spinner type="dots" /> Loading NBA games...</Text>
-            </Box>
-        );
+    if (view === 'detail' && games[selectedIndex]) {
+        return <GameDetailPage game={games[selectedIndex]} onBack={() => setView('map')} />;
     }
 
-    // Calculate map height (leave room for header, detail panel, status bar)
-    const mapHeight = Math.min(termHeight - 12, 25);
+    const availableHeight = termHeight - 12 - warningHeight;
+    const mapHeight = Math.max(0, Math.min(availableHeight, 25));
     const mapLines = getCleanMap().slice(0, mapHeight);
 
-    // Embed games into map
     const { lines: mapWithGames, gameColors } = embedGamesInMap(
         mapLines, games, selectedIndex, Math.min(termWidth - 2, US_MAP_WIDTH), searchFilter
     );
 
+    const dateDisplay = isSameDay(currentDate, new Date()) ? 'TODAY' : format(currentDate, 'yyyy-MM-dd');
+
     return (
         <Box flexDirection="column" height={termHeight}>
-            {/* Header */}
-            <Box justifyContent="center">
-                <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
-            </Box>
-
-            {/* Map with embedded games */}
-            <Box flexDirection="column" alignItems="center" flexGrow={1}>
-                {mapWithGames.map((line, rowIdx) => (
-                    <MapLine
-                        key={rowIdx}
-                        line={line}
-                        rowIndex={rowIdx}
-                        gameColors={gameColors}
-                        games={games}
-                    />
-                ))}
-            </Box>
-
-            {/* Search Bar / Selected Detail */}
-            {isSearching ? (
-                <Box
-                    borderStyle="round"
-                    borderColor="yellow"
-                    paddingX={2}
-                    marginTop={1}
-                    alignSelf="center"
-                    width={40}
-                    flexDirection="row"
-                >
-                    <Text>Search: </Text>
-                    <Text color="white">{searchFilter}</Text>
-                    <Text color="yellow">█</Text>
+            {/* Resolution Warning */}
+            {(isMapCramped || isSidebarCramped) && (
+                <Box borderStyle="double" borderColor="red" flexDirection="column" alignItems="center" marginBottom={1}>
+                    <Text color="red" bold>⚠️  Resolution Warning</Text>
+                    {isMapCramped && <Text>Map requires {minMapWidth}x{minHeight} (Current: {termWidth}x{termHeight})</Text>}
+                    {isSidebarCramped && <Text>Sidebar requires width {minFullWidth} (Current: {termWidth})</Text>}
                 </Box>
-            ) : (
-                games.length > 0 && games[selectedIndex] && (
-                    <GameDetail game={games[selectedIndex]} />
-                )
             )}
 
-            {/* Status bar */}
-            <Box justifyContent="space-between" paddingX={1}>
+            {/* Header */}
+            <Box justifyContent="center" flexDirection="column" alignItems="center">
+                <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
+                <Text bold color="yellow">📅 {dateDisplay} 📅</Text>
+            </Box>
+
+            {/* Main Content Area */}
+            <Box flexDirection="row" flexGrow={1} justifyContent="center" marginTop={1}>
+                {/* Map */}
+                <Box flexDirection="column" alignItems="center">
+                    {mapWithGames.map((line, rowIdx) => (
+                        <MapLine
+                            key={rowIdx}
+                            line={line}
+                            rowIndex={rowIdx}
+                            gameColors={gameColors}
+                            games={games}
+                        />
+                    ))}
+
+                    {/* Search / Selection Overlay */}
+                    {isSearching ? (
+                        <Box
+                            borderStyle="round"
+                            borderColor="yellow"
+                            paddingX={2}
+                            marginTop={1}
+                            alignSelf="center"
+                            width={40}
+                            flexDirection="row"
+                        >
+                            <Text>Search: </Text>
+                            <Text color="white">{searchFilter}</Text>
+                            <Text color="yellow">█</Text>
+                        </Box>
+                    ) : (
+                        games.length > 0 && games[selectedIndex] && (
+                            <GameDetail game={games[selectedIndex]} />
+                        )
+                    )}
+                </Box>
+
+                {/* Sidebar */}
+                <StandingsSidebar visible={showStandings} />
+            </Box>
+
+            {/* Status Bar */}
+            <Box justifyContent="space-between" paddingX={1} marginTop={1}>
                 <Box>
                     <Text color={connected ? 'green' : 'red'}>
                         {connected ? '● Connected' : '● Disconnected'}
                     </Text>
                     {loading && <Text color="yellow"> <Spinner type="dots" /></Text>}
                 </Box>
-                <Text dimColor>{games.length} games • /: search | Tab: cycle | ←→↑↓: spatial</Text>
+                <Text dimColor>{games.length} games • ←/→: date | ↑/↓: select | s: standings | Enter: detail</Text>
                 <Text dimColor>r: refresh | q: quit</Text>
             </Box>
         </Box>

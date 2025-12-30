@@ -19,6 +19,16 @@ async def get_today_games():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/date/{date_str}")
+async def get_games_by_date_endpoint(date_str: str):
+    """Get games for a specific date (YYYY-MM-DD)"""
+    try:
+        games = nba_service.get_games_by_date(date_str)
+        return {"games": games, "count": len(games)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/live")
 async def get_live_scores():
     """Get live scores for games currently in progress"""
@@ -36,5 +46,39 @@ async def get_all_teams():
     try:
         teams = nba_service.get_all_teams()
         return {"teams": teams, "count": len(teams)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/standings")
+async def get_standings():
+    """Get current league standings"""
+    try:
+        data = nba_service.get_standings()
+        return {"standings": data, "count": len(data)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{game_id}/boxscore")
+async def get_game_boxscore(game_id: str):
+    """Get boxscore data for a specific game"""
+    try:
+        data = nba_service.get_boxscore(game_id)
+        if not data:
+            raise HTTPException(status_code=404, detail="Game not found or no data available")
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{game_id}/playbyplay")
+async def get_game_playbyplay(game_id: str):
+    """Get play-by-play data for a specific game"""
+    try:
+        data = nba_service.get_playbyplay(game_id)
+        if not data:
+            raise HTTPException(status_code=404, detail="Game not found or no data available")
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

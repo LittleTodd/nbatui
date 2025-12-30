@@ -417,18 +417,18 @@ nba-tui/
 ## Phase 4：比赛详情页 + 扩展功能
 
 ### 4.1 Python 扩展 API
-- [ ] `/games/{game_id}/boxscore` - Box Score 数据
-- [ ] `/games/{game_id}/playbyplay` - Play-by-Play 数据
-- [ ] `/standings` - 联盟排名
+- [x] `/games/{game_id}/boxscore` - Box Score 数据
+- [x] `/games/{game_id}/playbyplay` - Play-by-Play 数据
+- [x] `/standings` - 联盟排名
 
 ### 4.2 GameDetail 页面
-- [ ] Box Score 表格
-- [ ] 球员统计（得分、篮板、助攻排序）
-- [ ] 实时 play-by-play
+- [x] Box Score 表格
+- [x] 球员统计（得分、篮板、助攻排序）
+- [x] 实时 play-by-play
 
 ### 4.3 联盟排名侧边栏
-- [ ] 东西部排名
-- [ ] 可切换显示/隐藏
+- [x] 东西部排名
+- [x] 可切换显示/隐藏
 
 ### 4.4 搜索功能
 - [ ] 球员搜索

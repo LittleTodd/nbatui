@@ -1,87 +1,80 @@
-/**
- * NBA Team Colors
- * Official primary and secondary colors for all 30 teams
- * Colors are in hex format for terminal RGB support
- */
+export const TEAM_COLORS: Record<string, string> = {
+    // Atlantic
+    'BOS': '#007A33', // Celtics Green
+    'BKN': '#000000', // Nets Black (Text needs to be white) - adjust to dark gray for visibility on black term? #2D2D2D
+    'NYK': '#F58426', // Knicks Orange (Blue background #006BB6 is standard but orange stands out more? Or use Blue?)
+    // User screenshot shows color blocks. Usually Primary Color.
+    // NYK Primary is Blue #006BB6
+    'PHI': '#006BB6', // 76ers Blue
+    'TOR': '#CE1141', // Raptors Red
 
-export interface TeamColors {
-    primary: string;
-    secondary: string;
-    name: string;
-}
+    // Central
+    'CHI': '#CE1141', // Bulls Red
+    'CLE': '#860038', // Cavs Wine
+    'DET': '#C8102E', // Pistons Red
+    'IND': '#FDBB30', // Pacers Yellow
+    'MIL': '#00471B', // Bucks Green
 
-export const teamColors: Record<string, TeamColors> = {
-    // Western Conference
-    // Pacific Division
-    LAL: { primary: '#552583', secondary: '#FDB927', name: 'Lakers' },
-    LAC: { primary: '#C8102E', secondary: '#1D428A', name: 'Clippers' },
-    GSW: { primary: '#1D428A', secondary: '#FFC72C', name: 'Warriors' },
-    SAC: { primary: '#5A2D81', secondary: '#63727A', name: 'Kings' },
-    PHX: { primary: '#1D1160', secondary: '#E56020', name: 'Suns' },
+    // Southeast
+    'ATL': '#C1D32F', // Hawks Volt Green or Red #E03A3E? Screenshot shows MIL distinct green. ATL usually Red.
+    // Let's use Red for ATL: #E03A3E.
+    'CHA': '#1D1160', // Hornets Purple (Teal #00788C is also good)
+    'MIA': '#98002E', // Heat Red
+    'ORL': '#0077C0', // Magic Blue
+    'WAS': '#002B5C', // Wizards Navy
 
-    // Northwest Division
-    DEN: { primary: '#0E2240', secondary: '#FEC524', name: 'Nuggets' },
-    MIN: { primary: '#0C2340', secondary: '#236192', name: 'Timberwolves' },
-    OKC: { primary: '#007AC1', secondary: '#EF3B24', name: 'Thunder' },
-    POR: { primary: '#E03A3E', secondary: '#000000', name: 'Trail Blazers' },
-    UTA: { primary: '#002B5C', secondary: '#00471B', name: 'Jazz' },
+    // Northwest
+    'DEN': '#0E2240', // Nuggets Midnight Blue (Yellow #FEC524)
+    'MIN': '#0C2340', // Timberwolves Blue (Green #78BE20)
+    'OKC': '#007AC1', // Thunder Blue
+    'POR': '#E03A3E', // Blazers Red
+    'UTA': '#002B5C', // Jazz Navy (Yellow #F9A01B)
 
-    // Southwest Division
-    DAL: { primary: '#00538C', secondary: '#002B5E', name: 'Mavericks' },
-    HOU: { primary: '#CE1141', secondary: '#000000', name: 'Rockets' },
-    MEM: { primary: '#5D76A9', secondary: '#12173F', name: 'Grizzlies' },
-    NOP: { primary: '#0C2340', secondary: '#C8102E', name: 'Pelicans' },
-    SAS: { primary: '#C4CED4', secondary: '#000000', name: 'Spurs' },
+    // Pacific
+    'GSW': '#1D428A', // Warriors Blue
+    'LAC': '#C8102E', // Clippers Red (Blue #1D428A)
+    'LAL': '#552583', // Lakers Purple (Gold #FDB927)
+    'PHX': '#1D1160', // Suns Purple (Orange #E56020)
+    'SAC': '#5A2D81', // Kings Purple
 
-    // Eastern Conference
-    // Atlantic Division
-    BOS: { primary: '#007A33', secondary: '#BA9653', name: 'Celtics' },
-    BKN: { primary: '#000000', secondary: '#FFFFFF', name: 'Nets' },
-    NYK: { primary: '#006BB6', secondary: '#F58426', name: 'Knicks' },
-    PHI: { primary: '#006BB6', secondary: '#ED174C', name: 'Sixers' },
-    TOR: { primary: '#CE1141', secondary: '#000000', name: 'Raptors' },
-
-    // Central Division
-    CHI: { primary: '#CE1141', secondary: '#000000', name: 'Bulls' },
-    CLE: { primary: '#860038', secondary: '#FDBB30', name: 'Cavaliers' },
-    DET: { primary: '#C8102E', secondary: '#1D42BA', name: 'Pistons' },
-    IND: { primary: '#002D62', secondary: '#FDBB30', name: 'Pacers' },
-    MIL: { primary: '#00471B', secondary: '#EEE1C6', name: 'Bucks' },
-
-    // Southeast Division
-    ATL: { primary: '#E03A3E', secondary: '#C1D32F', name: 'Hawks' },
-    CHA: { primary: '#1D1160', secondary: '#00788C', name: 'Hornets' },
-    MIA: { primary: '#98002E', secondary: '#F9A01B', name: 'Heat' },
-    ORL: { primary: '#0077C0', secondary: '#C4CED4', name: 'Magic' },
-    WAS: { primary: '#002B5C', secondary: '#E31837', name: 'Wizards' },
+    // Southwest
+    'DAL': '#00538C', // Mavs Blue
+    'HOU': '#CE1141', // Rockets Red
+    'MEM': '#5D76A9', // Grizzlies Blue
+    'NOP': '#0C2340', // Pelicans Navy (Red #C8102E, Gold #85714D)
+    'SAS': '#C4CED4', // Spurs Silver (Black #000000) - Silver/Grey background
 };
 
-/**
- * Get ANSI color code from hex (simplified - uses closest 256 color)
- */
-export function hexToAnsi(hex: string): number {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-
-    // Convert to 256-color palette (simplified)
-    if (r === g && g === b) {
-        // Grayscale
-        if (r < 8) return 16;
-        if (r > 248) return 231;
-        return Math.round((r - 8) / 247 * 24) + 232;
-    }
-
-    // Color cube
-    const rIdx = Math.round(r / 255 * 5);
-    const gIdx = Math.round(g / 255 * 5);
-    const bIdx = Math.round(b / 255 * 5);
-    return 16 + 36 * rIdx + 6 * gIdx + bIdx;
-}
-
-/**
- * Get team colors with fallback
- */
-export function getTeamColors(tricode: string): TeamColors {
-    return teamColors[tricode] || { primary: '#808080', secondary: '#404040', name: 'Unknown' };
-}
+// Adjustments for better TUI visibility (Contrast with White text)
+export const TEAM_BG_COLORS: Record<string, string> = {
+    'ATL': '#E03A3E',
+    'BOS': '#007A33',
+    'BKN': '#333333', // Dark Gray instead of Black
+    'CHA': '#00788C', // Teal looks better
+    'CHI': '#CE1141',
+    'CLE': '#6F263D',
+    'DAL': '#00538C',
+    'DEN': '#0E2240',
+    'DET': '#C8102E',
+    'GSW': '#1D428A',
+    'HOU': '#CE1141',
+    'IND': '#002D62', // Pacers Blue (Yellow text is hard on yellow bg) - Use their Navy
+    'LAC': '#C8102E',
+    'LAL': '#552583',
+    'MEM': '#5D76A9',
+    'MIA': '#98002E',
+    'MIL': '#00471B',
+    'MIN': '#236192', // Lighter Blue
+    'NOP': '#0C2340',
+    'NYK': '#006BB6',
+    'OKC': '#007AC1',
+    'ORL': '#0077C0',
+    'PHI': '#006BB6',
+    'PHX': '#1D1160',
+    'POR': '#E03A3E',
+    'SAC': '#5A2D81',
+    'SAS': '#888888', // Grey for Spurs
+    'TOR': '#CE1141',
+    'UTA': '#002B5C',
+    'WAS': '#002B5C',
+};
