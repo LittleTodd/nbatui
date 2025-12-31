@@ -32,3 +32,19 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+
+# Project specific
+plan.md
+experiments/
+data-service/cache.db
+data-service/*.log
+*.log
