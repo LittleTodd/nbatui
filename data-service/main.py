@@ -5,7 +5,7 @@ FastAPI server providing NBA game data and social media heat metrics
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import games, social
+from routers import games, social, polymarket
 
 app = FastAPI(
     title="NBA-TUI Data Service",
@@ -25,6 +25,7 @@ app.add_middleware(
 # Include routers
 app.include_router(games.router)
 app.include_router(social.router)
+app.include_router(polymarket.router)
 
 
 @app.get("/health")

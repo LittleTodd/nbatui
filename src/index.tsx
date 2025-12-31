@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
 import Spinner from 'ink-spinner';
 import { format, addDays, subDays, isSameDay } from 'date-fns';
-import { fetchTodayGames, fetchGamesByDate, checkHealth, type Game } from './services/apiClient.js';
+import { fetchTodayGames, fetchGamesByDate, checkHealth, fetchPolymarketOdds, getOddsKey, type Game, type GameOdds } from './services/apiClient.js';
 import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
 import { getTeamPosition } from './data/teamCoords.js';
 import { GameDetailPage } from './pages/GameDetailPage.js';
@@ -110,7 +110,7 @@ function percentToChar(percent: number, maxChars: number): number {
 }
 
 // Create a marker for a game without number prefix
-function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolean = false): string {
+function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolean = false, odds?: GameOdds): string {
     const isLive = game.gameStatus === 2;
     const isFinal = game.gameStatus === 3;
     const isFuture = game.gameStatus === 1;
@@ -123,7 +123,8 @@ function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolea
     let content = '';
 
     if (isFuture) {
-        // Future: JUST "AWY-HME" (No scores)
+        // Future: Display team names, odds shown via DetailPanel instead
+        // Keep map marker clean - just team codes
         content = `${away}-${home}`;
     } else {
         // Live or Final: "AWY 100-90 HME" or "100-90"
@@ -245,18 +246,34 @@ function embedGamesInMap(
 // Map Line component with colored markers
 import { TEAM_BG_COLORS } from './data/teamColors.js';
 
-function MapLine({ line, rowIndex, gameColors, games }: {
+function MapLine({ line, rowIndex, gameColors, games, odds }: {
     line: string;
     rowIndex: number;
     gameColors: Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean }>;
     games: Game[];
+    odds: Record<string, GameOdds>;
 }) {
     // Find if any game marker is on this row
     const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string }> = [];
 
     gameColors.forEach((pos, gameIdx) => {
         if (pos.row === rowIndex) {
-            const marker = createGameMarker(games[gameIdx], pos.isSelected, pos.isHighlighted);
+            const game = games[gameIdx];
+            if (!game) return;
+            // Lookup odds for this game - try multiple date keys due to timezone differences
+            // Polymarket uses endDate (often +1 day from gameTimeUTC)
+            const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
+            let gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate)];
+
+            // If not found, try +1 day (Polymarket often uses next day as endDate)
+            if (!gameOdds && gameDate) {
+                const nextDay = new Date(gameDate);
+                nextDay.setDate(nextDay.getDate() + 1);
+                const nextDayStr = nextDay.toISOString().slice(0, 10);
+                gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
+            }
+
+            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds);
             markersOnRow.push({
                 col: pos.col,
                 length: marker.length,
@@ -375,8 +392,9 @@ function MapLine({ line, rowIndex, gameColors, games }: {
 }
 
 // Selected game detail panel
-function GameDetail({ game }: { game: Game }) {
+function GameDetail({ game, odds }: { game: Game; odds?: GameOdds }) {
     const isLive = game.gameStatus === 2;
+    const isFuture = game.gameStatus === 1;
     return (
         <Box
             borderStyle="round"
@@ -396,6 +414,17 @@ function GameDetail({ game }: { game: Game }) {
                     </Text>
                     <Text bold>{game.homeTeam.teamTricode}</Text>
                 </Box>
+                {/* Show odds for future games */}
+                {isFuture && odds && odds.awayOdds > 0 && (
+                    <Box gap={1}>
+                        <Text color="yellow">📊 Odds:</Text>
+                        <Text color="white">{game.awayTeam.teamTricode}</Text>
+                        <Text color="green" bold>{odds.awayOdds.toFixed(2)}</Text>
+                        <Text color="gray">|</Text>
+                        <Text color="green" bold>{odds.homeOdds.toFixed(2)}</Text>
+                        <Text color="white">{game.homeTeam.teamTricode}</Text>
+                    </Box>
+                )}
                 <Text color={isLive ? "green" : "gray"}>
                     {isLive && "● LIVE "}{game.gameStatusText}
                 </Text>
@@ -416,6 +445,7 @@ function App() {
     const [searchFilter, setSearchFilter] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [showStandings, setShowStandings] = useState(false);
+    const [odds, setOdds] = useState<Record<string, GameOdds>>({});
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -439,18 +469,19 @@ function App() {
         }
 
         const dateStr = format(queryDate, 'yyyy-MM-dd');
-        let data: Game[] = [];
 
-        // Note: fetchTodayGames (live default) might handle logic differently, 
-        // but for specific dates we use the shift.
-        // Actually, let's trust the shift for consistency even for 'Today'.
-        data = await fetchGamesByDate(dateStr);
+        // Fetch games and odds in parallel
+        const [gamesData, oddsData] = await Promise.all([
+            fetchGamesByDate(dateStr),
+            fetchPolymarketOdds()
+        ]);
 
-        setGames(data);
+        setGames(gamesData);
+        setOdds(oddsData);
         setLoading(false);
         setLastUpdated(new Date());
 
-        if (data.length > 0) setSelectedIndex(0);
+        if (gamesData.length > 0) setSelectedIndex(0);
     };
 
     const checkConnection = async () => {
@@ -615,6 +646,7 @@ function App() {
                             rowIndex={rowIdx}
                             gameColors={gameColors}
                             games={games}
+                            odds={odds}
                         />
                     ))}
 
@@ -634,9 +666,18 @@ function App() {
                             <Text color="yellow">█</Text>
                         </Box>
                     ) : (
-                        games.length > 0 && games[selectedIndex] && (
-                            <GameDetail game={games[selectedIndex]} />
-                        )
+                        games.length > 0 && games[selectedIndex] && (() => {
+                            const game = games[selectedIndex];
+                            const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
+                            let gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate)];
+                            if (!gameOdds && gameDate) {
+                                const nextDay = new Date(gameDate);
+                                nextDay.setDate(nextDay.getDate() + 1);
+                                const nextDayStr = nextDay.toISOString().slice(0, 10);
+                                gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
+                            }
+                            return <GameDetail game={game} odds={gameOdds} />;
+                        })()
                     )}
                 </Box>
 

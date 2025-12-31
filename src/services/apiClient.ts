@@ -142,3 +142,41 @@ export async function fetchStandings(): Promise<any> {
         return null;
     }
 }
+
+export interface GameOdds {
+    awayTeam: string;
+    homeTeam: string;
+    awayOdds: number;
+    homeOdds: number;
+    awayProb: number;
+    homeProb: number;
+    date: string;
+    source: string;
+}
+
+export interface OddsResponse {
+    odds: Record<string, GameOdds>;
+    count: number;
+}
+
+/**
+ * Fetch Polymarket odds for all upcoming games
+ */
+export async function fetchPolymarketOdds(): Promise<Record<string, GameOdds>> {
+    try {
+        const res = await fetch(`${BASE_URL}/api/polymarket/odds`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: OddsResponse = await res.json();
+        return data.odds;
+    } catch (error) {
+        console.error('Failed to fetch Polymarket odds:', error);
+        return {};
+    }
+}
+
+/**
+ * Get odds key for a game (used for matching)
+ */
+export function getOddsKey(awayTricode: string, homeTricode: string, date: string): string {
+    return `${awayTricode}_${homeTricode}_${date}`;
+}
