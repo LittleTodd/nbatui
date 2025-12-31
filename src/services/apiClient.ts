@@ -95,14 +95,108 @@ export async function fetchLiveGames(): Promise<Game[]> {
 }
 
 /**
+ * Parse ET time from gameStatusText (e.g., "6:00 pm ET") and convert to local timezone
+ * @param statusText - Status text containing ET time (e.g., "6:00 pm ET")
+ * @param gameDate - Date string in YYYY-MM-DD format
+ * @returns Formatted local time string (e.g., "7:00 am") or empty string if parsing fails
+ */
+export function parseETTimeToLocal(statusText: string, gameDate: string): string {
+    if (!statusText || !gameDate) return '';
+
+    // Match patterns like "6:00 pm ET", "12:30 am ET", "1:00 pm et"
+    const match = statusText.match(/(\d{1,2}):(\d{2})\s*(am|pm)\s*et/i);
+    if (!match) return '';
+
+    try {
+        let hours = parseInt(match[1], 10);
+        const minutes = parseInt(match[2], 10);
+        const isPM = match[3].toLowerCase() === 'pm';
+
+        // Convert to 24-hour format
+        if (isPM && hours !== 12) hours += 12;
+        if (!isPM && hours === 12) hours = 0;
+
+        // Create date in ET (Eastern Time)
+        // ET is UTC-5 (EST) or UTC-4 (EDT)
+        // For simplicity, we'll use America/New_York timezone
+        const dateStr = `${gameDate}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+
+        // Parse as ET and convert to local
+        // Create a date assuming ET timezone
+        const etDate = new Date(dateStr + '-05:00'); // Use EST (UTC-5) as base
+
+        // Check if date is valid
+        if (isNaN(etDate.getTime())) return '';
+
+        // Format to local time in 12-hour format
+        return etDate.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        }).toLowerCase();
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Convert UTC game time to user's local timezone in 12-hour format
+ * @param gameTimeUTC - ISO 8601 UTC time string (e.g., "2026-01-01T18:00:00Z")
+ * @returns Formatted local time string (e.g., "2:00 am")
+ */
+export function formatGameTimeLocal(gameTimeUTC: string): string {
+    if (!gameTimeUTC) return '';
+
+    try {
+        // Check if this is just a date (ends with T00:00:00) - if so, return empty
+        // as the real time is probably in gameStatusText
+        // Note: The API returns dates without Z suffix, so we check the string directly
+        if (gameTimeUTC.endsWith('T00:00:00') || gameTimeUTC.endsWith('T00:00:00Z')) {
+            return '';
+        }
+
+        const date = new Date(gameTimeUTC);
+        if (isNaN(date.getTime())) return '';
+
+        // Use Intl.DateTimeFormat to get local time in 12-hour format
+        return date.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        }).toLowerCase();
+    } catch {
+        return '';
+    }
+}
+
+/**
  * Get game status display info
  */
 export function getGameStatusInfo(game: Game): { text: string; isLive: boolean; isFinal: boolean } {
     const isLive = game.gameStatus === 2;
     const isFinal = game.gameStatus === 3;
+    const isScheduled = game.gameStatus === 1;
 
     let text = game.gameStatusText;
-    if (isLive && game.period > 0) {
+
+    // For scheduled games, convert time to local timezone
+    if (isScheduled) {
+        // First try to use gameTimeUTC if it has actual time (not just midnight)
+        if (game.gameTimeUTC) {
+            const localTime = formatGameTimeLocal(game.gameTimeUTC);
+            if (localTime) {
+                text = localTime;
+            } else {
+                // gameTimeUTC is just a date, parse time from gameStatusText
+                const gameDate = game.gameTimeUTC.slice(0, 10);
+                const parsedTime = parseETTimeToLocal(game.gameStatusText, gameDate);
+                if (parsedTime) {
+                    text = parsedTime;
+                }
+                // else keep original gameStatusText
+            }
+        }
+    } else if (isLive && game.period > 0) {
         const periodText = game.period <= 4 ? `Q${game.period}` : `OT${game.period - 4}`;
         text = game.gameClock ? `${periodText} ${game.gameClock}` : periodText;
     }

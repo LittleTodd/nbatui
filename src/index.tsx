@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
 import Spinner from 'ink-spinner';
 import { format, addDays, subDays, isSameDay } from 'date-fns';
-import { fetchTodayGames, fetchGamesByDate, checkHealth, fetchPolymarketOdds, getOddsKey, type Game, type GameOdds } from './services/apiClient.js';
+import { fetchTodayGames, fetchGamesByDate, checkHealth, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type Game, type GameOdds } from './services/apiClient.js';
 import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
 import { getTeamPosition } from './data/teamCoords.js';
 import { GameDetailPage } from './pages/GameDetailPage.js';
@@ -404,7 +404,7 @@ function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
 
 // Selected game detail panel
 function GameDetail({ game, odds }: { game: Game; odds?: GameOdds }) {
-    const isLive = game.gameStatus === 2;
+    const { text: statusText, isLive, isFinal } = getGameStatusInfo(game);
     const isFuture = game.gameStatus === 1;
 
     // Blinking animation for live indicator
@@ -448,7 +448,7 @@ function GameDetail({ game, odds }: { game: Game; odds?: GameOdds }) {
                     </Box>
                 )}
                 <Text color={isLive ? "green" : "gray"}>
-                    {isLive && (dotVisible ? "● " : "○ ")}{isLive && "LIVE "}{game.gameStatusText}
+                    {isLive && (dotVisible ? "● " : "○ ")}{isLive && "LIVE "}{statusText}
                 </Text>
             </Box>
         </Box>
