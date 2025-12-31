@@ -5,19 +5,31 @@
 import type { Game } from '../services/apiClient';
 import { getGameStatusInfo } from '../services/apiClient';
 import { getTeamColors } from '../data/teamColors';
+import { HeatIndicator, type HeatLevel } from './HeatIndicator';
+
+export interface HeatData {
+    level: HeatLevel;
+    count: number;
+}
 
 interface GameCardProps {
     game: Game;
     isSelected?: boolean;
     compact?: boolean;
+    heat?: HeatData;
 }
 
-export function GameCard({ game, isSelected = false, compact = false }: GameCardProps) {
+export function GameCard({ game, isSelected = false, compact = false, heat }: GameCardProps) {
     const { text: statusText, isLive, isFinal } = getGameStatusInfo(game);
 
-    // Determine border color based on state
+    // Determine border color based on state and heat
     const getBorderColor = () => {
         if (isSelected) return 'cyan';
+
+        // High heat overrides standard colors (except selected)
+        if (heat?.level === 'fire') return 'red';
+        if (heat?.level === 'hot') return 'orange';
+
         if (isLive) return 'green';
         if (isFinal) return 'gray';
         return 'white';
@@ -38,6 +50,9 @@ export function GameCard({ game, isSelected = false, compact = false }: GameCard
                     <b>{game.homeTeam.teamTricode}</b>
                     <span> {game.homeTeam.score}</span>
                     <span dimColor> {statusText}</span>
+                    {heat && heat.level !== 'cold' && (
+                        <HeatIndicator level={heat.level} count={heat.count} compact={true} />
+                    )}
                 </text>
             </box>
         );
@@ -59,6 +74,11 @@ export function GameCard({ game, isSelected = false, compact = false }: GameCard
                 >
                     {isLive ? '● LIVE ' : ''}{statusText}
                 </text>
+                {heat && (
+                    <box marginLeft={1}>
+                        <HeatIndicator level={heat.level} count={heat.count} />
+                    </box>
+                )}
             </box>
 
             {/* Away team */}

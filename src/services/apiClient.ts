@@ -243,6 +243,7 @@ export interface GameOdds {
     homeProb: number;
     date: string;
     source: string;
+    volume?: number;
 }
 
 export interface OddsResponse {
@@ -288,5 +289,50 @@ export async function fetchPolymarketProps(): Promise<Record<string, Candidate[]
         return data.props;
     } catch {
         return {};
+    }
+}
+
+export interface SocialHeat {
+    count: number;
+    level: 'cold' | 'warm' | 'hot' | 'fire';
+    trending: boolean;
+    url?: string;
+}
+
+export interface Tweet {
+    id: string;
+    text: string;
+    user: string;
+    likes: number;
+}
+
+export interface TweetsResponse {
+    tweets: Tweet[];
+}
+
+/**
+ * Fetch social heat for a game
+ */
+export async function fetchGameHeat(team1: string, team2: string): Promise<SocialHeat | null> {
+    try {
+        const res = await fetch(`${BASE_URL}/social/heat/${team1}/${team2}`);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Fetch top tweets/comments for a game
+ */
+export async function fetchGameTweets(team1: string, team2: string): Promise<Tweet[]> {
+    try {
+        const res = await fetch(`${BASE_URL}/social/tweets/${team1}/${team2}`);
+        if (!res.ok) return [];
+        const data: TweetsResponse = await res.json();
+        return data.tweets;
+    } catch {
+        return [];
     }
 }

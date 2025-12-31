@@ -52,7 +52,7 @@ while true; do
         # Play the animation once while data loads in background
         if [ -f "src/gif/loading.gif" ]; then
             # Play once (-m 1), very slow (-s very_slow = 1 second per frame)
-            ./data-service/venv/bin/ascii-art-animator -f src/gif/loading.gif -m 1 -s very_slow
+            ./data-service/venv/bin/ascii-art-animator -f src/gif/loading.gif -m 1 -s very_slow -C cyan
         else
             echo "Loading..."
             sleep 3

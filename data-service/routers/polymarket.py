@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/polymarket", tags=["polymarket"])
 
 
 @router.get("/odds")
-async def get_all_odds() -> Dict:
+def get_all_odds() -> Dict:
     """
     Get all available NBA game odds from Polymarket.
     Returns a dict keyed by "AWAY_HOME_DATE".
@@ -21,7 +21,7 @@ async def get_all_odds() -> Dict:
 
 
 @router.get("/odds/{away_team}/{home_team}/{game_date}")
-async def get_game_odds(away_team: str, home_team: str, game_date: str) -> Dict:
+def get_game_odds(away_team: str, home_team: str, game_date: str) -> Dict:
     """
     Get odds for a specific game.
     
@@ -38,7 +38,7 @@ async def get_game_odds(away_team: str, home_team: str, game_date: str) -> Dict:
 
 
 @router.get("/props")
-async def get_nba_props() -> Dict:
+def get_nba_props() -> Dict:
     """
     Get generic NBA props (Championship, MVP, ROY, etc.)
     """

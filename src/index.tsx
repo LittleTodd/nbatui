@@ -11,6 +11,8 @@ import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
 import { getTeamPosition } from './data/teamCoords.js';
 import { GameDetailPage } from './pages/GameDetailPage.js';
 import { StandingsSidebar } from './components/StandingsSidebar.js';
+import { useSocialHeat, type HeatData } from './hooks/useSocialHeat.js';
+import { HeatIndicator } from './components/HeatIndicator.js';
 
 // Get geographic positions for all games
 function getGamePositions(games: Game[]): Array<{ idx: number; x: number; y: number }> {
@@ -110,9 +112,8 @@ function percentToChar(percent: number, maxChars: number): number {
 }
 
 // Create a marker for a game without number prefix
-function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolean = false, odds?: GameOdds): string {
+function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolean = false, odds?: GameOdds, heat?: HeatData): string {
     const isLive = game.gameStatus === 2;
-    const isFinal = game.gameStatus === 3;
     const isFuture = game.gameStatus === 1;
 
     const away = game.awayTeam.teamTricode;
@@ -123,44 +124,25 @@ function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolea
     let content = '';
 
     if (isFuture) {
-        // Future: Display team names, odds shown via DetailPanel instead
-        // Keep map marker clean - just team codes
         content = `${away}-${home}`;
     } else {
-        // Live or Final: "AWY 100-90 HME" or "100-90"
-        // Space is tight on map.
-        // Format: "AWY SSS-SSS HME" might be too long.
-        // Let's stick to "AWY-HME" if we can't fit scores?
-        // User asked: "For past games, please showing both score."
-        // Let's try compact: "AWY(100)-HME(90)" or "100-90"
-        // Actually, existing logic was just "AWY-HME".
-        // Let's force score display if space permits or just minimal.
-
-        // If selected, we show full detail in the Detail box anyway.
-        // For the marker, let's try to fit score? 
-        // Marker length affects collision. 
-        // Let's try: "AWY 100-90 HME" is very long (15 chars).
-        // Maybe just "100-90" if finalized? But then we lose team names.
-        // User request: "If it's past game, please showing both score."
-        // Maybe he means in the DETAIL view? Or on the map?
-        // "Right click on map display next day... left click display previous day and result."
-        // Implies on the map.
-
-        // Let's try compact score: "LAL 102-99 BOS"
         content = `${away} ${awayScore}-${homeScore} ${home}`;
     }
 
-    // Add live indicator prefix if game is live (blinking handled by MapLine render)
+    // Add live indicator prefix if game is live
     const livePrefix = isLive ? '●● ' : '';
 
+    // Add Heat Icon to marker if very hot
+    const heatSuffix = (heat?.level === 'fire' || heat?.level === 'hot') ? ' 🔥' : '';
+
     if (isSelected) {
-        return `${livePrefix}[${content}]`;
+        return `${livePrefix}[${content}${heatSuffix}]`;
     } else if (isHighlighted) {
-        return `${livePrefix}»${content}«`;
+        return `${livePrefix}»${content}${heatSuffix}«`;
     } else if (isLive) {
-        return `●● ${content}`;
+        return `●● ${content}${heatSuffix}`;
     } else {
-        return content;
+        return `${content}${heatSuffix}`;
     }
 }
 
@@ -178,10 +160,11 @@ function embedGamesInMap(
     games: Game[],
     selectedIndex: number,
     termWidth: number,
-    searchFilter: string = ''
-): { lines: string[]; gameColors: Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean }> } {
+    searchFilter: string = '',
+    heatMap: Record<string, HeatData> = {}
+): { lines: string[]; gameColors: Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; heat?: HeatData }> } {
     const lines = mapLines.map(l => l.padEnd(termWidth, ' ').slice(0, termWidth));
-    const gameColors = new Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean }>();
+    const gameColors = new Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; heat?: HeatData }>();
 
     const maxHeight = lines.length;
     const maxWidth = termWidth;
@@ -190,7 +173,8 @@ function embedGamesInMap(
         const pos = getTeamPosition(game.homeTeam.teamTricode);
         const isSelected = idx === selectedIndex;
         const isHighlighted = checkGameMatchesFilter(game, searchFilter);
-        const marker = createGameMarker(game, isSelected, isHighlighted);
+        const heat = heatMap[game.gameId];
+        const marker = createGameMarker(game, isSelected, isHighlighted, undefined, heat);
         return {
             game,
             idx,
@@ -200,6 +184,7 @@ function embedGamesInMap(
             isLive: game.gameStatus === 2,
             isSelected,
             isHighlighted,
+            heat
         };
     });
 
@@ -208,20 +193,19 @@ function embedGamesInMap(
     const occupiedRanges = new Map<number, Array<{ start: number; end: number }>>();
 
     for (const gamePos of gamesWithPos) {
-        const { idx, markerLen, isLive, isSelected, isHighlighted } = gamePos;
+        const { idx, markerLen, isLive, isSelected, isHighlighted, heat } = gamePos;
         let { row, col } = gamePos;
-        const marker = createGameMarker(gamePos.game, isSelected, isHighlighted);
+        const marker = createGameMarker(gamePos.game, isSelected, isHighlighted, undefined, heat);
 
         col = Math.max(0, Math.min(col, maxWidth - markerLen));
         row = Math.max(0, Math.min(row, maxHeight - 1));
 
-        const MIN_GAP = 3; // Minimum characters between games on the same line
+        const MIN_GAP = 3;
 
         let attempts = 0;
         while (attempts < maxHeight) {
             const ranges = occupiedRanges.get(row) || [];
             const hasCollision = ranges.some(r =>
-                // Check intersection with padding
                 (col < r.end + MIN_GAP && col + markerLen > r.start - MIN_GAP)
             );
 
@@ -239,7 +223,7 @@ function embedGamesInMap(
             const before = line.slice(0, col);
             const after = line.slice(col + markerLen);
             lines[row] = before + marker + after;
-            gameColors.set(idx, { row, col, isLive, isSelected, isHighlighted });
+            gameColors.set(idx, { row, col, isLive, isSelected, isHighlighted, heat });
         }
     }
 
@@ -252,24 +236,20 @@ import { TEAM_BG_COLORS } from './data/teamColors.js';
 function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
     line: string;
     rowIndex: number;
-    gameColors: Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean }>;
+    gameColors: Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; heat?: HeatData }>;
     games: Game[];
     odds: Record<string, GameOdds>;
     liveDotVisible: boolean;
 }) {
-    // Find if any game marker is on this row
-    const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string }> = [];
+    const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string; heat?: HeatData }> = [];
 
     gameColors.forEach((pos, gameIdx) => {
         if (pos.row === rowIndex) {
             const game = games[gameIdx];
             if (!game) return;
-            // Lookup odds for this game - try multiple date keys due to timezone differences
-            // Polymarket uses endDate (often +1 day from gameTimeUTC)
             const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
             let gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate)];
 
-            // If not found, try +1 day (Polymarket often uses next day as endDate)
             if (!gameOdds && gameDate) {
                 const nextDay = new Date(gameDate);
                 nextDay.setDate(nextDay.getDate() + 1);
@@ -277,7 +257,7 @@ function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
                 gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
             }
 
-            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds);
+            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds, pos.heat);
             markersOnRow.push({
                 col: pos.col,
                 length: marker.length,
@@ -285,7 +265,8 @@ function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
                 isSelected: pos.isSelected,
                 isHighlighted: pos.isHighlighted,
                 gameIdx,
-                content: marker
+                content: marker,
+                heat: pos.heat
             });
         }
     });
@@ -324,10 +305,6 @@ function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
             const isFinal = game.gameStatus === 3;
             const isFuture = game.gameStatus === 1;
 
-            // Determine base color based on game state
-            // 🟢 Live: green
-            // ⚪ Scheduled: gray (dim)
-            // 🔵 Finished: blue
             let finalColor = marker.isLive ? 'green' : (isFinal ? 'blue' : 'gray');
             let finalBg = undefined;
             let finalBold = marker.isSelected;
@@ -339,10 +316,18 @@ function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
                 finalBold = true;
                 finalDim = false;
             } else if (bg) {
+                // Team Color Block - Always prioritize this for the tricode background
                 finalBg = bg;
-                finalColor = '#ffffff'; // Explicit hex white for badges
-                finalBold = true;       // Explicit bold for badges
+                finalColor = '#ffffff'; // White text on team color
+                finalBold = true;
                 finalDim = false;
+            } else if (marker.heat?.level === 'fire' || marker.heat?.level === 'hot') {
+                // Hot games get special text color for scores/info
+                finalColor = marker.heat.level === 'fire' ? 'red' : 'orange';
+                finalBold = true;
+                if (marker.isSelected) {
+                    finalColor = 'cyan';
+                }
             } else if (marker.isSelected) {
                 finalColor = 'cyan';
                 finalBold = true;
@@ -361,11 +346,10 @@ function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
             );
         };
 
-        // Replace blinking dot placeholder for live games
         let displayContent = rawContent;
         if (marker.isLive && rawContent.startsWith('●●')) {
             const dot = liveDotVisible ? '●' : '○';
-            displayContent = dot + rawContent.slice(2); // Replace ●● with single blinking dot
+            displayContent = dot + rawContent.slice(2);
         }
 
         const parts1 = displayContent.split(away);
@@ -413,7 +397,7 @@ function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
 }
 
 // Selected game detail panel
-function GameDetail({ game, odds, currentIndex, totalGames }: { game: Game; odds?: GameOdds; currentIndex: number; totalGames: number }) {
+function GameDetail({ game, odds, currentIndex, totalGames, heat }: { game: Game; odds?: GameOdds; currentIndex: number; totalGames: number; heat?: HeatData }) {
     const { text: statusText, isLive, isFinal } = getGameStatusInfo(game);
     const isFuture = game.gameStatus === 1;
 
@@ -427,10 +411,15 @@ function GameDetail({ game, odds, currentIndex, totalGames }: { game: Game; odds
         return () => clearInterval(timer);
     }, [isLive]);
 
+    // Border color reacts to heat
+    let borderColor = 'cyan';
+    if (heat?.level === 'fire') borderColor = 'red';
+    else if (heat?.level === 'hot') borderColor = 'orange';
+
     return (
         <Box
             borderStyle="round"
-            borderColor="cyan"
+            borderColor={borderColor}
             paddingX={2}
             marginTop={1}
             justifyContent="center"
@@ -454,6 +443,14 @@ function GameDetail({ game, odds, currentIndex, totalGames }: { game: Game; odds
                     </Text>
                     <Text bold>{game.homeTeam.teamTricode}</Text>
                 </Box>
+
+                {/* Social Heat Indicator */}
+                {heat && heat.level !== 'cold' && (
+                    <Box marginTop={0}>
+                        <HeatIndicator level={heat.level} count={heat.count} />
+                    </Box>
+                )}
+
                 {/* Show odds for future games */}
                 {isFuture && odds && odds.awayOdds > 0 && (
                     <Box gap={1}>
@@ -487,6 +484,9 @@ function App() {
     const [showStandings, setShowStandings] = useState(false);
     const [odds, setOdds] = useState<Record<string, GameOdds>>({});
 
+    // Social Heat Hook
+    const heatMap = useSocialHeat(games, odds);
+
     // Global blinking state for live game indicator
     const [liveDotVisible, setLiveDotVisible] = useState(true);
     useEffect(() => {
@@ -498,43 +498,78 @@ function App() {
         return () => clearInterval(timer);
     }, [games]);
 
+
+    // Helper to robustly find odds across potential date boundaries
+    const findGameOdds = (game: Game, odds: Record<string, GameOdds>) => {
+        if (!game || !odds) return undefined;
+        const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
+        if (!gameDate) return undefined;
+
+        // Try exact match
+        let key = getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
+        if (odds[key]) return odds[key];
+
+        // Try next day (common for late games or timezone shifts)
+        const nextDay = new Date(gameDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextDayStr = nextDay.toISOString().slice(0, 10);
+        key = getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr);
+        if (odds[key]) return odds[key];
+
+        // Try previous day
+        const prevDay = new Date(gameDate);
+        prevDay.setDate(prevDay.getDate() - 1);
+        const prevDayStr = prevDay.toISOString().slice(0, 10);
+        key = getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, prevDayStr);
+        return odds[key];
+    };
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
     const loadGamesForDate = async (date: Date, isBackgroundRefresh = false) => {
-        // Only show loading indicator on initial load or date change, not on background refresh
         if (!isBackgroundRefresh) {
             setLoading(true);
         }
-
-        // Timezone Adjustment Logic:
-        // NBA games roughly happen 7pm - 1am ET (US).
-        // - In US (UTC-5 to UTC-8): This is the 'Same Day'.
-        // - In Europe/Asia (UTC+0 to UTC+8): This is 'Next Day' morning.
-        // So for users East of Atlantic (Offset <= 0), 'Today' in local time corresponds to 'Yesterday' in NBA Schedule.
-        // JS getTimezoneOffset() returns +ve for West of UTC (US=300), -ve for East (China=-480).
 
         const offset = new Date().getTimezoneOffset();
         let queryDate = date;
         const isViewingToday = isSameDay(date, new Date());
 
         if (offset <= 0) {
-            // East of UTC (Europe, Asia) -> Shift back 1 day to get the "Morning" games
             queryDate = subDays(date, 1);
         }
 
         const dateStr = format(queryDate, 'yyyy-MM-dd');
 
+        // Check if the date is DEEP in the past (2 days ago or more)
+        // We allow "Yesterday" because timezones might mean Yesterday is actually the active game day.
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const startOfYesterday = subDays(startOfToday, 1);
+
+        // Treat as "Past" only if it's strictly before Yesterday
+        const isPastDate = queryDate.getTime() < startOfYesterday.getTime();
+
         // For real-time data: use fetchTodayGames when viewing today (has live scores)
         // For historical data: use fetchGamesByDate
         const gamesPromise = isViewingToday
-            ? fetchTodayGames()  // Real-time live scores
-            : fetchGamesByDate(dateStr);  // Historical/scheduled data
+            ? fetchTodayGames()
+            : fetchGamesByDate(dateStr);
 
-        const [gamesData, oddsData] = await Promise.all([
-            gamesPromise,
-            fetchPolymarketOdds()
-        ]);
+        let gamesData: Game[];
+        let oddsData: Record<string, GameOdds> = {};
+
+        if (isPastDate) {
+            // Optimization: Don't fetch odds for historical games (older than yesterday)
+            [gamesData] = await Promise.all([gamesPromise]);
+        } else {
+            // Fetch odds for Today, Yesterday, and Future
+            [gamesData, oddsData] = await Promise.all([
+                gamesPromise,
+                fetchPolymarketOdds()
+            ]);
+        }
 
         setGames(gamesData);
         setOdds(oddsData);
@@ -543,7 +578,6 @@ function App() {
         }
         setLastUpdated(new Date());
 
-        // Only reset selection on initial load, not on refresh
         if (!isBackgroundRefresh && gamesData.length > 0) setSelectedIndex(0);
     };
 
@@ -552,19 +586,16 @@ function App() {
         setConnected(isHealthy);
     };
 
-    // Initial load & Date change
     useEffect(() => {
         loadGamesForDate(currentDate);
         checkConnection();
     }, [currentDate]);
 
-    // Auto-refresh (when there are live games or viewing today)
     useEffect(() => {
         const timer = setInterval(() => {
-            // Refresh if viewing today OR if there are any live games in current view
             const hasLiveGames = games.some(g => g.gameStatus === 2);
             if (isSameDay(currentDate, new Date()) || hasLiveGames) {
-                loadGamesForDate(currentDate, true);  // Background refresh - no loading indicator
+                loadGamesForDate(currentDate, true);
                 checkConnection();
             }
         }, 30000);
@@ -582,7 +613,6 @@ function App() {
         if (isSearching) {
             if (key.return) {
                 setIsSearching(false);
-                // Update selection to the first matching game
                 if (searchFilter) {
                     const filter = searchFilter.toLowerCase();
                     const foundIdx = games.findIndex(g =>
@@ -595,10 +625,6 @@ function App() {
                     );
                     if (foundIdx !== -1) {
                         setSelectedIndex(foundIdx);
-                        // Also open detail immediately to satisfy "Enter is view detail"? 
-                        // User said: "press enter should view detail... but it views current..."
-                        // This implies they pressed Enter hoping to view.
-                        // Let's make it auto-view for better UX if they typed something specific.
                         if (games.length > 0) setView('detail');
                     }
                 }
@@ -616,7 +642,6 @@ function App() {
         }
 
         if (input === 'r') {
-            // Manual refresh - use background mode to prevent flicker
             loadGamesForDate(currentDate, true);
             return;
         }
@@ -653,7 +678,6 @@ function App() {
     const termWidth = process.stdout.columns || 100;
     const termHeight = process.stdout.rows || 40;
 
-    // Resolution check
     const minMapWidth = 100;
     const minFullWidth = 165;
     const minHeight = 40;
@@ -663,11 +687,11 @@ function App() {
 
     let warningHeight = 0;
     if (isMapCramped || isSidebarCramped) {
-        warningHeight += 2; // borders
-        warningHeight += 1; // title
+        warningHeight += 2;
+        warningHeight += 1;
         if (isMapCramped) warningHeight += 1;
         if (isSidebarCramped) warningHeight += 1;
-        warningHeight += 1; // margin bottom
+        warningHeight += 1;
     }
 
     if (view === 'detail' && games[selectedIndex]) {
@@ -679,14 +703,13 @@ function App() {
     const mapLines = getCleanMap().slice(0, mapHeight);
 
     const { lines: mapWithGames, gameColors } = embedGamesInMap(
-        mapLines, games, selectedIndex, Math.min(termWidth - 2, US_MAP_WIDTH), searchFilter
+        mapLines, games, selectedIndex, Math.min(termWidth - 2, US_MAP_WIDTH), searchFilter, heatMap
     );
 
     const dateDisplay = isSameDay(currentDate, new Date()) ? 'TODAY' : format(currentDate, 'yyyy-MM-dd');
 
     return (
         <Box flexDirection="column" height={termHeight}>
-            {/* Resolution Warning */}
             {(isMapCramped || isSidebarCramped) && (
                 <Box borderStyle="double" borderColor="red" flexDirection="column" alignItems="center" marginBottom={1}>
                     <Text color="red" bold>⚠️  Resolution Warning</Text>
@@ -695,18 +718,14 @@ function App() {
                 </Box>
             )}
 
-            {/* Header */}
             <Box justifyContent="center" flexDirection="column" alignItems="center">
                 <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
                 <Text bold color="yellow">📅 {dateDisplay} 📅</Text>
             </Box>
 
-            {/* Main Content Area */}
             <Box flexDirection="row" flexGrow={1} justifyContent="center" marginTop={1}>
-                {/* Map */}
                 <Box flexDirection="column" alignItems="center">
                     {games.length === 0 && !loading ? (
-                        /* Empty State */
                         <Box
                             flexDirection="column"
                             alignItems="center"
@@ -728,7 +747,6 @@ function App() {
                             </Box>
                         </Box>
                     ) : (
-                        /* Map with games */
                         mapWithGames.map((line, rowIdx) => (
                             <MapLine
                                 key={rowIdx}
@@ -742,7 +760,6 @@ function App() {
                         ))
                     )}
 
-                    {/* Search / Selection Overlay */}
                     {isSearching ? (
                         <Box
                             borderStyle="round"
@@ -768,16 +785,16 @@ function App() {
                                 const nextDayStr = nextDay.toISOString().slice(0, 10);
                                 gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
                             }
-                            return <GameDetail game={game} odds={gameOdds} currentIndex={selectedIndex} totalGames={games.length} />;
+                            // Pass heat to detail
+                            const gameHeat = heatMap[game.gameId];
+                            return <GameDetail game={game} odds={gameOdds} currentIndex={selectedIndex} totalGames={games.length} heat={gameHeat} />;
                         })()
                     )}
                 </Box>
 
-                {/* Sidebar */}
                 <StandingsSidebar visible={showStandings} />
             </Box>
 
-            {/* Status Bar */}
             <Box justifyContent="space-between" paddingX={1} marginTop={1}>
                 <Box>
                     <Text color={connected ? 'green' : 'red'}>

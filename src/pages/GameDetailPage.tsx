@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds } from '../services/apiClient.js';
+import { Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet } from '../services/apiClient.js';
 import { TEAM_BG_COLORS } from '../data/teamColors.js';
+import { HeatIndicator } from '../components/HeatIndicator.js';
 
 interface GameDetailPageProps {
     game: Game;
@@ -28,12 +29,28 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     const [standings, setStandings] = useState<TeamStanding[]>([]);
     const [odds, setOdds] = useState<GameOdds | null>(null);
     const [loading, setLoading] = useState(true);
+    const [socialHeat, setSocialHeat] = useState<SocialHeat | null>(null);
+    const [tweets, setTweets] = useState<Tweet[]>([]);
 
     const isScheduled = game.gameStatus === 1;
 
     useEffect(() => {
         let mounted = true;
         setLoading(true);
+
+        // Fetch Social Data (Parallel)
+        const team1 = game.awayTeam.teamName;
+        const team2 = game.homeTeam.teamName;
+
+        Promise.all([
+            fetchGameHeat(team1, team2),
+            fetchGameTweets(team1, team2)
+        ]).then(([heatData, tweetsData]) => {
+            if (mounted) {
+                setSocialHeat(heatData);
+                setTweets(tweetsData);
+            }
+        });
 
         if (isScheduled) {
             // For scheduled games, fetch standings and odds for preview
@@ -88,7 +105,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
     // Scheduled game: show Game Preview
     if (isScheduled) {
-        return <GamePreview game={game} standings={standings} odds={odds} />;
+        return <GamePreview game={game} standings={standings} odds={odds} socialHeat={socialHeat} tweets={tweets} />;
     }
 
     // Live/completed game: show boxscore
@@ -103,12 +120,17 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
     return (
         <Box flexDirection="column" padding={1} borderStyle="round" borderColor="cyan">
-            <Box justifyContent="center" marginBottom={1}>
+            <Box justifyContent="center" marginBottom={1} flexDirection="column" alignItems="center">
                 <Text bold color="yellow">
                     {boxScore.awayTeam.teamCity} {boxScore.awayTeam.teamName} ({boxScore.awayTeam.score})
                     {' @ '}
                     {boxScore.homeTeam.teamCity} {boxScore.homeTeam.teamName} ({boxScore.homeTeam.score})
                 </Text>
+                {socialHeat && socialHeat.level !== 'cold' && (
+                    <Box marginTop={0}>
+                        <HeatIndicator level={socialHeat.level} count={socialHeat.count} />
+                    </Box>
+                )}
             </Box>
 
             <Box marginBottom={1}>
@@ -122,6 +144,19 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 </Box>
             </Box>
 
+            {/* Social Buzz Section */}
+            {tweets.length > 0 && (
+                <Box flexDirection="column" marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
+                    <Text bold color="cyan">💬 Social Buzz (r/nba)</Text>
+                    {tweets.slice(0, 3).map((t, i) => (
+                        <Box key={i} flexDirection="column" marginTop={1}>
+                            <Text dimColor>@{t.user} • {t.likes} pts</Text>
+                            <Text>"{t.text}"</Text>
+                        </Box>
+                    ))}
+                </Box>
+            )}
+
             <Box marginTop={2}>
                 <Text dimColor>Press Esc to go back</Text>
             </Box>
@@ -130,7 +165,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 }
 
 // Game Preview component for scheduled games
-function GamePreview({ game, standings, odds }: { game: Game; standings: TeamStanding[]; odds: GameOdds | null }) {
+function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game; standings: TeamStanding[]; odds: GameOdds | null; socialHeat: SocialHeat | null; tweets: Tweet[] }) {
     const { text: gameTime } = getGameStatusInfo(game);
 
     // Find standings for both teams
@@ -146,8 +181,11 @@ function GamePreview({ game, standings, odds }: { game: Game; standings: TeamSta
     return (
         <Box flexDirection="column" padding={1} borderStyle="round" borderColor="cyan">
             {/* Header */}
-            <Box justifyContent="center" marginBottom={1}>
+            <Box justifyContent="center" marginBottom={1} flexDirection="column" alignItems="center">
                 <Text bold color="cyan">🏀 GAME PREVIEW</Text>
+                {socialHeat && socialHeat.level !== 'cold' && (
+                    <HeatIndicator level={socialHeat.level} count={socialHeat.count} />
+                )}
             </Box>
 
             {/* Divider */}
@@ -244,6 +282,24 @@ function GamePreview({ game, standings, odds }: { game: Game; standings: TeamSta
                             <Text color="green" bold>{odds.homeOdds.toFixed(2)}</Text>
                             <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color="#ffffff"> {game.homeTeam.teamTricode} </Text>
                         </Box>
+                    </Box>
+                </>
+            )}
+
+            {/* Social Buzz for Preview */}
+            {tweets.length > 0 && (
+                <>
+                    <Box justifyContent="center">
+                        <Text dimColor>{'─'.repeat(40)}</Text>
+                    </Box>
+                    <Box flexDirection="column" marginTop={1} paddingX={1}>
+                        <Text bold color="cyan" alignSelf="center">💬 Pre-Game Chatter</Text>
+                        {tweets.slice(0, 3).map((t, i) => (
+                            <Box key={i} flexDirection="column" marginTop={1}>
+                                <Text dimColor>@{t.user} • {t.likes} pts</Text>
+                                <Text>"{t.text}"</Text>
+                            </Box>
+                        ))}
                     </Box>
                 </>
             )}

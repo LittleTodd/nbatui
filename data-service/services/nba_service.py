@@ -17,19 +17,34 @@ class NBAService:
     
     def get_today_games(self) -> list[dict[str, Any]]:
         """
-        Get all games scheduled for today with live scores
-        
-        Returns:
-            List of game dictionaries with scores and status
+        Get all games scheduled for 'NBA Today'.
+        Calculates the date based on US/Eastern time.
         """
-        try:
-            board = scoreboard.ScoreBoard()
-            data = board.get_dict()
-            games = data.get("scoreboard", {}).get("games", [])
-            return self._format_games(games)
-        except Exception:
-            # Silently fail
-            return []
+        from datetime import datetime, timedelta
+        
+        # Calculate ET time (UTC-5 roughly, ignoring DST nuance for simplicity or use pytz if added)
+        # Better: just use UTC and offset
+        utc_now = datetime.utcnow()
+        # ET is UTC-5 Standard, UTC-4 Daylight. Let's use UTC-5 as base approx.
+        # NBA Day changeover usually happens 4AM-6AM ET.
+        # Let's say we switch to "next day" at 12:00 PM UTC (7 AM ET).
+        # Before 12:00 PM UTC, we might still want to see results of "last night" if we are late?
+        # User Feedback: "12/28 almost couldn't load".
+        # Current User State: Jan 1 00:32 UTC+8 -> Dec 31 11:32 AM ET.
+        # They want to see Dec 31 games.
+        
+        # Simple Logic: Get current date in ET.
+        # If explicit DST handling is needed we need timezone lib, but let's do manual offset -5
+        et_now = utc_now - timedelta(hours=5)
+        
+        # If it's early morning in ET (e.g. before 6 AM), we might consider it "yesterday" 
+        # BUT usually "Today" view should show scheduled games for the calendar day.
+        # At 11:32 AM ET, Dec 31 -> We want Dec 31.
+        
+        # Format YYYY-MM-DD
+        today_str = et_now.strftime('%Y-%m-%d')
+        
+        return self.get_games_by_date(today_str)
 
     def get_games_by_date(self, date_str: str) -> list[dict[str, Any]]:
         """

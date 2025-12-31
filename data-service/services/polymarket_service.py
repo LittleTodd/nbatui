@@ -54,11 +54,26 @@ def parse_team_names(title: str) -> tuple:
     return away_tricode, home_tricode
 
 
+import time
+
+_odds_cache = {
+    "data": {},
+    "timestamp": 0
+}
+CACHE_TTL = 60  # 1 minute
+
 def fetch_polymarket_odds() -> Dict:
     """
     Fetch all active NBA game odds from Polymarket.
     Returns a dict keyed by "AWAY_HOME_DATE" for easy matching.
+    Cached for 60 seconds to avoid API throttling and improve UI responsiveness.
     """
+    global _odds_cache
+    
+    # Check cache
+    if time.time() - _odds_cache["timestamp"] < CACHE_TTL:
+        return _odds_cache["data"]
+
     url = f"{POLYMARKET_API_BASE}/events"
     params = {
         "series_id": NBA_SERIES_ID,
@@ -73,6 +88,9 @@ def fetch_polymarket_odds() -> Dict:
         events = response.json()
     except Exception as e:
         logger.error(f"Failed to fetch Polymarket odds: {e}")
+        # Return stale cache if available, otherwise empty
+        if _odds_cache["data"]:
+            return _odds_cache["data"]
         return {}
     
     odds_data = {}
@@ -138,11 +156,18 @@ def fetch_polymarket_odds() -> Dict:
                     "awayProb": round(away_prob * 100, 1),
                     "homeProb": round(home_prob * 100, 1),
                     "date": game_date,
-                    "source": "polymarket"
+                    "source": "polymarket",
+                    "volume": float(moneyline_market.get("volume", 0))
                 }
         except Exception as e:
             logger.warning(f"Failed to parse odds for {title}: {e}")
             continue
+    
+    # Update cache
+    _odds_cache = {
+        "data": odds_data,
+        "timestamp": time.time()
+    }
     
     return odds_data
 

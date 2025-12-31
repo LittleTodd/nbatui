@@ -10,7 +10,7 @@ nba_service = NBAService()
 
 
 @router.get("/today")
-async def get_today_games():
+def get_today_games():
     """Get all games scheduled for today with current scores"""
     try:
         games = nba_service.get_today_games()
@@ -20,7 +20,7 @@ async def get_today_games():
 
 
 @router.get("/date/{date_str}")
-async def get_games_by_date_endpoint(date_str: str):
+def get_games_by_date_endpoint(date_str: str):
     """Get games for a specific date (YYYY-MM-DD)"""
     try:
         games = nba_service.get_games_by_date(date_str)
@@ -30,7 +30,7 @@ async def get_games_by_date_endpoint(date_str: str):
 
 
 @router.get("/live")
-async def get_live_scores():
+def get_live_scores():
     """Get live scores for games currently in progress"""
     try:
         games = nba_service.get_today_games()
@@ -41,7 +41,7 @@ async def get_live_scores():
 
 
 @router.get("/teams")
-async def get_all_teams():
+def get_all_teams():
     """Get all NBA teams with their info"""
     try:
         teams = nba_service.get_all_teams()
@@ -51,7 +51,7 @@ async def get_all_teams():
 
 
 @router.get("/standings")
-async def get_standings():
+def get_standings():
     """Get current league standings"""
     try:
         data = nba_service.get_standings()
@@ -61,7 +61,7 @@ async def get_standings():
 
 
 @router.get("/{game_id}/boxscore")
-async def get_game_boxscore(game_id: str):
+def get_game_boxscore(game_id: str):
     """Get boxscore data for a specific game"""
     try:
         data = nba_service.get_boxscore(game_id)
@@ -73,7 +73,7 @@ async def get_game_boxscore(game_id: str):
 
 
 @router.get("/{game_id}/playbyplay")
-async def get_game_playbyplay(game_id: str):
+def get_game_playbyplay(game_id: str):
     """Get play-by-play data for a specific game"""
     try:
         data = nba_service.get_playbyplay(game_id)
