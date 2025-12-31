@@ -1,0 +1,2 @@
+[console_scripts]
+ascii-art-animator = ascii_animator.cli:main

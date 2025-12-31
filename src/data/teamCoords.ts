@@ -82,8 +82,8 @@ export const teamCoords: Record<string, TeamCoord> = {
 export function getTeamPosition(tricode: string): { x: number; y: number } {
   const coord = teamCoords[tricode];
   if (!coord) {
-    console.warn(`Unknown team tricode: ${tricode}`);
-    return { x: 50, y: 50 }; // Default to center if unknown
+    // Unknown team - return center position silently
+    return { x: 50, y: 50 };
   }
   return {
     x: coord.x + (coord.offsetX || 0),

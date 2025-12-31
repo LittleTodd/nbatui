@@ -172,3 +172,77 @@ def get_odds_for_game(away_tricode: str, home_tricode: str, game_date: str) -> O
         pass
     
     return None
+
+
+def fetch_nba_props() -> Dict[str, List[Dict]]:
+    """
+    Fetch major NBA props: Championship, MVP, Rookie of the Year.
+    Returns a dict with keys: 'championship', 'mvp', 'rookie_of_year', etc.
+    Each value is a list of top candidates with their probabilities.
+    """
+    props_slugs = {
+        "championship": "2026-nba-champion",
+        "mvp": "nba-mvp-694",
+        "rookie_of_year": "nba-rookie-of-the-year-873",
+        "coach_of_year": "nba-2025-26-coach-of-the-year",
+        "east_winner": "nba-eastern-conference-champion-442"
+    }
+    
+    results = {}
+    
+    for key, slug in props_slugs.items():
+        try:
+            url = f"{POLYMARKET_API_BASE}/events"
+            params = {"slug": slug}
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if not data:
+                continue
+                
+            event = data[0]
+            markets = event.get("markets", [])
+            
+            candidates = []
+            
+            for market in markets:
+                prices_str = market.get("outcomePrices", "[]")
+                if isinstance(prices_str, str):
+                    import json
+                    prices = json.loads(prices_str)
+                else:
+                    prices = prices_str
+                    
+                if not prices or len(prices) == 0:
+                    continue
+                    
+                # Usually index 0 is "Yes" for props like "Will X win?"
+                prob = float(prices[0])
+                
+                # Get candidate name
+                name = market.get("groupItemTitle", "")
+                if not name:
+                    # Fallback to parsing question
+                    q = market.get("question", "")
+                    if "Will " in q and " win " in q:
+                        name = q.split("Will ")[1].split(" win ")[0]
+                
+                if name and prob > 0.01: # Filter out very low probability
+                    candidates.append({
+                        "name": name,
+                        "probability": round(prob * 100, 1)
+                    })
+            
+            # Sort by probability descending
+            candidates.sort(key=lambda x: x["probability"], reverse=True)
+            
+            # Keep top 3
+            results[key] = candidates[:3]
+            
+        except Exception:
+            # Silently fail for individual props
+            continue
+            
+    return results

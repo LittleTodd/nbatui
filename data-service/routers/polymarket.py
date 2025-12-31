@@ -35,3 +35,13 @@ async def get_game_odds(away_team: str, home_team: str, game_date: str) -> Dict:
         return {"odds": None, "found": False}
     
     return {"odds": odds, "found": True}
+
+
+@router.get("/props")
+async def get_nba_props() -> Dict:
+    """
+    Get generic NBA props (Championship, MVP, ROY, etc.)
+    """
+    from services.polymarket_service import fetch_nba_props
+    props = fetch_nba_props()
+    return {"props": props}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
-import { fetchStandings } from '../services/apiClient.js';
+import { fetchStandings, fetchPolymarketProps } from '../services/apiClient.js';
 
 interface StandingsSidebarProps {
     visible: boolean;
@@ -8,13 +8,20 @@ interface StandingsSidebarProps {
 
 export const StandingsSidebar = ({ visible }: StandingsSidebarProps) => {
     const [standings, setStandings] = useState<any[]>([]);
+    const [props, setProps] = useState<Record<string, any[]>>({});
 
     useEffect(() => {
         if (visible) {
+            // Fetch Standings
             fetchStandings().then(data => {
                 if (data && data.standings) {
                     setStandings(data.standings);
                 }
+            });
+
+            // Fetch Props
+            fetchPolymarketProps().then(data => {
+                if (data) setProps(data);
             });
         }
     }, [visible]);
@@ -53,11 +60,12 @@ export const StandingsSidebar = ({ visible }: StandingsSidebarProps) => {
         // If (City + Name).length > 13 => use Tricode favored or just Name?
         // Let's try to fit "City Name" first, if > 16 chars, use Name. If Name > 16, use Tricode.
 
-        let teamLabel = `${t.TeamCity} ${t.TeamName}`;
-        if (teamLabel.length > 16) {
-            teamLabel = t.TeamName; // Try just name
-            if (teamLabel.length > 16) teamLabel = t.TeamCity; // Try just City
-            if (teamLabel.length > 16) teamLabel = t.TeamTricode; // Fallback to Tricode
+        let teamLabel = t.TeamName;
+        // Fallback for very long names if needed, but user prefers simple Name.
+        if (teamLabel.length > 17) {
+            // Truncate or use tricode if absolutely necessary? 
+            // "Trail Blazers" is 13. "Timberwolves" is 12. "76ers" is 5.
+            // Should be safe.
         }
 
         return (
@@ -65,6 +73,21 @@ export const StandingsSidebar = ({ visible }: StandingsSidebarProps) => {
                 <Box width={3}><Text color={color}>{rank}.</Text></Box>
                 <Box width={17}><Text color={color}>{teamLabel}</Text></Box>
                 <Box width={8} justifyContent="flex-end"><Text dimColor>{record}</Text></Box>
+            </Box>
+        );
+    };
+
+    const renderPropTable = (title: string, candidates: any[]) => {
+        if (!candidates || candidates.length === 0) return null;
+        return (
+            <Box flexDirection="column" marginBottom={1}>
+                <Text bold underline color="cyan">{title}</Text>
+                {candidates.slice(0, 3).map((c, idx) => (
+                    <Box key={idx} justifyContent="space-between" width={28}>
+                        <Text>{idx + 1}. {c.name.slice(0, 18)}</Text>
+                        <Text color="green">{c.probability}%</Text>
+                    </Box>
+                ))}
             </Box>
         );
     };
@@ -103,6 +126,23 @@ export const StandingsSidebar = ({ visible }: StandingsSidebarProps) => {
 
             <Box marginTop={1}>
                 <Text dimColor>1-6:Playoff 7-10:Play-in</Text>
+            </Box>
+
+            <Box marginTop={1} borderStyle="single" borderTop={false} borderLeft={false} borderRight={false} borderBottom={true} borderColor="gray" />
+
+            {/* Polymarket Predictions */}
+            <Box marginTop={1} flexDirection="column">
+                <Text dimColor>Polymarket Predictions</Text>
+                <Box flexDirection="row" gap={4} marginTop={1}>
+                    <Box flexDirection="column">
+                        {renderPropTable("NBA Champion", props['championship'])}
+                        {renderPropTable("Rookie of Year", props['rookie_of_year'])}
+                    </Box>
+                    <Box flexDirection="column">
+                        {renderPropTable("MVP", props['mvp'])}
+                        {renderPropTable("Coach of Year", props['coach_of_year'])}
+                    </Box>
+                </Box>
             </Box>
         </Box>
     );

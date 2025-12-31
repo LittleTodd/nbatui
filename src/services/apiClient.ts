@@ -58,8 +58,8 @@ export async function fetchTodayGames(): Promise<Game[]> {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: GamesResponse = await res.json();
         return data.games;
-    } catch (error) {
-        console.error('Failed to fetch games:', error);
+    } catch {
+        // Silently fail - don't log to terminal (causes flicker)
         return [];
     }
 }
@@ -73,8 +73,8 @@ export async function fetchGamesByDate(date: string): Promise<Game[]> {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: GamesResponse = await res.json();
         return data.games;
-    } catch (error) {
-        console.error(`Failed to fetch games for ${date}:`, error);
+    } catch {
+        // Silently fail
         return [];
     }
 }
@@ -88,8 +88,8 @@ export async function fetchLiveGames(): Promise<Game[]> {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: GamesResponse = await res.json();
         return data.games;
-    } catch (error) {
-        console.error('Failed to fetch live games:', error);
+    } catch {
+        // Silently fail
         return [];
     }
 }
@@ -115,8 +115,7 @@ export async function fetchBoxScore(gameId: string): Promise<any> {
         const res = await fetch(`${BASE_URL}/games/${gameId}/boxscore`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
-    } catch (error) {
-        console.error('Failed to fetch boxscore:', error);
+    } catch {
         return null;
     }
 }
@@ -126,8 +125,7 @@ export async function fetchPlayByPlay(gameId: string): Promise<any> {
         const res = await fetch(`${BASE_URL}/games/${gameId}/playbyplay`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
-    } catch (error) {
-        console.error('Failed to fetch playbyplay:', error);
+    } catch {
         return null;
     }
 }
@@ -137,8 +135,7 @@ export async function fetchStandings(): Promise<any> {
         const res = await fetch(`${BASE_URL}/games/standings`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
-    } catch (error) {
-        console.error('Failed to fetch standings:', error);
+    } catch {
         return null;
     }
 }
@@ -168,8 +165,7 @@ export async function fetchPolymarketOdds(): Promise<Record<string, GameOdds>> {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: OddsResponse = await res.json();
         return data.odds;
-    } catch (error) {
-        console.error('Failed to fetch Polymarket odds:', error);
+    } catch {
         return {};
     }
 }
@@ -179,4 +175,24 @@ export async function fetchPolymarketOdds(): Promise<Record<string, GameOdds>> {
  */
 export function getOddsKey(awayTricode: string, homeTricode: string, date: string): string {
     return `${awayTricode}_${homeTricode}_${date}`;
+}
+
+export interface Candidate {
+    name: string;
+    probability: number;
+}
+
+export interface PropsResponse {
+    props: Record<string, Candidate[]>;
+}
+
+export async function fetchPolymarketProps(): Promise<Record<string, Candidate[]>> {
+    try {
+        const res = await fetch(`${BASE_URL}/api/polymarket/props`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as PropsResponse;
+        return data.props;
+    } catch {
+        return {};
+    }
 }

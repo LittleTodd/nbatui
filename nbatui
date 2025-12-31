@@ -1,0 +1,75 @@
+#!/bin/bash
+# NBA TUI Launcher
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Colors
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+echo -e "${YELLOW}Initializing...${NC}"
+
+# 1. Setup Data Service Environment (if missing)
+if [ ! -d "data-service/venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv data-service/venv
+fi
+
+# 2. Ensure ascii-animator is installed (for loading screen)
+if [ ! -f "data-service/venv/bin/ascii-art-animator" ]; then
+    echo "Installing loading animation tools..."
+    ./data-service/venv/bin/pip install ascii-animator >/dev/null 2>&1
+fi
+
+# 3. Start Data Service (Background)
+echo "Starting backend..."
+cd data-service
+source venv/bin/activate
+# Install requirements quiet
+pip install -q -r requirements.txt >/dev/null 2>&1
+# Kill existing
+lsof -ti:8765 | xargs kill -9 2>/dev/null || true
+# Start
+python main.py > /dev/null 2>&1 &
+DATA_SERVICE_PID=$!
+cd ..
+
+# 4. Start Loading Animation Loop
+# We loop until data service is ready
+# Loop logic: Play animation fully at least once (-m 1), then continue if ready.
+while true; do
+    if [ -f "src/gif/loading.gif" ]; then
+        # Play once (-m 1), slower (-s slow)
+        ./data-service/venv/bin/ascii-art-animator -f src/gif/loading.gif -m 1 -s slow
+    else
+        echo "Loading..."
+        sleep 1
+    fi
+
+    # Check if backend is ready
+    if curl -s http://localhost:8765/health > /dev/null 2>&1; then
+        break
+    fi
+    # If not ready, loop again
+done
+
+clear
+
+# 5. Run TUI
+cleanup() {
+    echo -e "\n${YELLOW}🛑 Shutting down...${NC}"
+    kill $DATA_SERVICE_PID 2>/dev/null || true
+    exit 0
+}
+trap cleanup SIGINT SIGTERM
+
+echo -e "${GREEN}✅ Ready! Starting TUI...${NC}"
+sleep 0.5
+/opt/homebrew/bin/bun run start 2>/dev/null
+
+cleanup

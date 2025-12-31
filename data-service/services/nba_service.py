@@ -26,8 +26,8 @@ class NBAService:
             data = board.get_dict()
             games = data.get("scoreboard", {}).get("games", [])
             return self._format_games(games)
-        except Exception as e:
-            print(f"Error fetching today's games: {e}")
+        except Exception:
+            # Silently fail
             return []
 
     def get_games_by_date(self, date_str: str) -> list[dict[str, Any]]:
@@ -151,14 +151,12 @@ class NBAService:
                                     game['awayTeam']['score'] = scores_map[away_id]
                                     game['gameStatus'] = 3 # Mark as Final
                                     game['gameStatusText'] = "Final"
-                except Exception as ex:
-                    print(f"Fallback error: {ex}")
+                except Exception:
+                    pass  # Silently ignore fallback errors
 
             return list(games_map.values())
-        except Exception as e:
-            print(f"Error fetching games for {date_str}: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
+            # Silently fail
             return []
     
     def _get_team_info(self, team_id: int) -> dict:
@@ -192,9 +190,8 @@ class NBAService:
             box = boxscore.BoxScore(game_id=game_id)
             data = box.get_dict()
             return data.get("game", {})
-        except Exception as e:
-            print(f"Error fetching boxscore for {game_id}: {e}")
-            return {}
+        except Exception:
+            return None
 
     def get_playbyplay(self, game_id: str) -> dict[str, Any]:
         """
@@ -204,9 +201,8 @@ class NBAService:
             pbp = playbyplay.PlayByPlay(game_id=game_id)
             data = pbp.get_dict()
             return data.get("game", {})
-        except Exception as e:
-            print(f"Error fetching playbyplay for {game_id}: {e}")
-            return {}
+        except Exception:
+            return None
 
     def get_standings(self) -> list[dict[str, Any]]:
         """
@@ -227,8 +223,7 @@ class NBAService:
                     standings.append(team_data)
                 return standings
             return []
-        except Exception as e:
-            print(f"Error fetching standings: {e}")
+        except Exception:
             return []
 
     

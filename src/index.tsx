@@ -150,12 +150,15 @@ function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolea
         content = `${away} ${awayScore}-${homeScore} ${home}`;
     }
 
+    // Add live indicator prefix if game is live (blinking handled by MapLine render)
+    const livePrefix = isLive ? '●● ' : '';
+
     if (isSelected) {
-        return `[${content}]`;
+        return `${livePrefix}[${content}]`;
     } else if (isHighlighted) {
-        return `»${content}«`;
+        return `${livePrefix}»${content}«`;
     } else if (isLive) {
-        return `● ${content}`;
+        return `●● ${content}`;
     } else {
         return content;
     }
@@ -246,12 +249,13 @@ function embedGamesInMap(
 // Map Line component with colored markers
 import { TEAM_BG_COLORS } from './data/teamColors.js';
 
-function MapLine({ line, rowIndex, gameColors, games, odds }: {
+function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
     line: string;
     rowIndex: number;
     gameColors: Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean }>;
     games: Game[];
     odds: Record<string, GameOdds>;
+    liveDotVisible: boolean;
 }) {
     // Find if any game marker is on this row
     const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string }> = [];
@@ -347,7 +351,14 @@ function MapLine({ line, rowIndex, gameColors, games, odds }: {
             );
         };
 
-        const parts1 = rawContent.split(away);
+        // Replace blinking dot placeholder for live games
+        let displayContent = rawContent;
+        if (marker.isLive && rawContent.startsWith('●●')) {
+            const dot = liveDotVisible ? '●' : '○';
+            displayContent = dot + rawContent.slice(2); // Replace ●● with single blinking dot
+        }
+
+        const parts1 = displayContent.split(away);
 
         if (parts1.length >= 2) {
             const preAway = parts1[0];
@@ -368,7 +379,7 @@ function MapLine({ line, rowIndex, gameColors, games, odds }: {
                 markerElements.push(renderText(postAway, `rest-${i}`));
             }
         } else {
-            markerElements.push(renderText(rawContent, `full-${i}`));
+            markerElements.push(renderText(displayContent, `full-${i}`));
         }
 
         segments.push(
@@ -395,6 +406,17 @@ function MapLine({ line, rowIndex, gameColors, games, odds }: {
 function GameDetail({ game, odds }: { game: Game; odds?: GameOdds }) {
     const isLive = game.gameStatus === 2;
     const isFuture = game.gameStatus === 1;
+
+    // Blinking animation for live indicator
+    const [dotVisible, setDotVisible] = useState(true);
+    useEffect(() => {
+        if (!isLive) return;
+        const timer = setInterval(() => {
+            setDotVisible(v => !v);
+        }, 500);
+        return () => clearInterval(timer);
+    }, [isLive]);
+
     return (
         <Box
             borderStyle="round"
@@ -426,7 +448,7 @@ function GameDetail({ game, odds }: { game: Game; odds?: GameOdds }) {
                     </Box>
                 )}
                 <Text color={isLive ? "green" : "gray"}>
-                    {isLive && "● LIVE "}{game.gameStatusText}
+                    {isLive && (dotVisible ? "● " : "○ ")}{isLive && "LIVE "}{game.gameStatusText}
                 </Text>
             </Box>
         </Box>
@@ -447,11 +469,25 @@ function App() {
     const [showStandings, setShowStandings] = useState(false);
     const [odds, setOdds] = useState<Record<string, GameOdds>>({});
 
+    // Global blinking state for live game indicator
+    const [liveDotVisible, setLiveDotVisible] = useState(true);
+    useEffect(() => {
+        const hasLiveGames = games.some(g => g.gameStatus === 2);
+        if (!hasLiveGames) return;
+        const timer = setInterval(() => {
+            setLiveDotVisible(v => !v);
+        }, 500);
+        return () => clearInterval(timer);
+    }, [games]);
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-    const loadGamesForDate = async (date: Date) => {
-        setLoading(true);
+    const loadGamesForDate = async (date: Date, isBackgroundRefresh = false) => {
+        // Only show loading indicator on initial load or date change, not on background refresh
+        if (!isBackgroundRefresh) {
+            setLoading(true);
+        }
 
         // Timezone Adjustment Logic:
         // NBA games roughly happen 7pm - 1am ET (US).
@@ -462,6 +498,7 @@ function App() {
 
         const offset = new Date().getTimezoneOffset();
         let queryDate = date;
+        const isViewingToday = isSameDay(date, new Date());
 
         if (offset <= 0) {
             // East of UTC (Europe, Asia) -> Shift back 1 day to get the "Morning" games
@@ -470,18 +507,26 @@ function App() {
 
         const dateStr = format(queryDate, 'yyyy-MM-dd');
 
-        // Fetch games and odds in parallel
+        // For real-time data: use fetchTodayGames when viewing today (has live scores)
+        // For historical data: use fetchGamesByDate
+        const gamesPromise = isViewingToday
+            ? fetchTodayGames()  // Real-time live scores
+            : fetchGamesByDate(dateStr);  // Historical/scheduled data
+
         const [gamesData, oddsData] = await Promise.all([
-            fetchGamesByDate(dateStr),
+            gamesPromise,
             fetchPolymarketOdds()
         ]);
 
         setGames(gamesData);
         setOdds(oddsData);
-        setLoading(false);
+        if (!isBackgroundRefresh) {
+            setLoading(false);
+        }
         setLastUpdated(new Date());
 
-        if (gamesData.length > 0) setSelectedIndex(0);
+        // Only reset selection on initial load, not on refresh
+        if (!isBackgroundRefresh && gamesData.length > 0) setSelectedIndex(0);
     };
 
     const checkConnection = async () => {
@@ -495,16 +540,18 @@ function App() {
         checkConnection();
     }, [currentDate]);
 
-    // Auto-refresh (only if viewing today)
+    // Auto-refresh (when there are live games or viewing today)
     useEffect(() => {
         const timer = setInterval(() => {
-            if (isSameDay(currentDate, new Date())) {
-                loadGamesForDate(currentDate);
+            // Refresh if viewing today OR if there are any live games in current view
+            const hasLiveGames = games.some(g => g.gameStatus === 2);
+            if (isSameDay(currentDate, new Date()) || hasLiveGames) {
+                loadGamesForDate(currentDate, true);  // Background refresh - no loading indicator
                 checkConnection();
             }
         }, 30000);
         return () => clearInterval(timer);
-    }, [currentDate]);
+    }, [currentDate, games]);
 
     useInput((input, key) => {
         if (view === 'detail') return;
@@ -551,7 +598,8 @@ function App() {
         }
 
         if (input === 'r') {
-            loadGamesForDate(currentDate);
+            // Manual refresh - use background mode to prevent flicker
+            loadGamesForDate(currentDate, true);
             return;
         }
 
@@ -647,6 +695,7 @@ function App() {
                             gameColors={gameColors}
                             games={games}
                             odds={odds}
+                            liveDotVisible={liveDotVisible}
                         />
                     ))}
 
