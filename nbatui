@@ -39,23 +39,29 @@ python main.py > /dev/null 2>&1 &
 DATA_SERVICE_PID=$!
 cd ..
 
-# 4. Start Loading Animation Loop
-# We loop until data service is ready
-# Loop logic: Play animation fully at least once (-m 1), then continue if ready.
+# 4. Start Loading Animation Loop + Background Data Prefetch
+# We loop until data service is ready AND data is prefetched
 while true; do
-    if [ -f "src/gif/loading.gif" ]; then
-        # Play once (-m 1), slower (-s slow)
-        ./data-service/venv/bin/ascii-art-animator -f src/gif/loading.gif -m 1 -s slow
-    else
-        echo "Loading..."
-        sleep 1
-    fi
-
-    # Check if backend is ready
+    # Check if backend is ready first
     if curl -s http://localhost:8765/health > /dev/null 2>&1; then
+        # Backend is up! Start prefetching data in background
+        curl -s "http://localhost:8765/games/today" > /dev/null 2>&1 &
+        curl -s "http://localhost:8765/api/polymarket/odds" > /dev/null 2>&1 &
+        curl -s "http://localhost:8765/games/standings" > /dev/null 2>&1 &
+        
+        # Play the animation once while data loads in background
+        if [ -f "src/gif/loading.gif" ]; then
+            # Play once (-m 1), very slow (-s very_slow = 1 second per frame)
+            ./data-service/venv/bin/ascii-art-animator -f src/gif/loading.gif -m 1 -s very_slow
+        else
+            echo "Loading..."
+            sleep 3
+        fi
         break
     fi
-    # If not ready, loop again
+    
+    # Backend not ready yet, short wait
+    sleep 0.5
 done
 
 clear

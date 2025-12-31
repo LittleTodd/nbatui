@@ -1,0 +1,149 @@
+"""
+Cache Service
+SQLite-based caching for completed NBA game data
+"""
+import sqlite3
+import json
+import os
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+# Cache database path
+CACHE_DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'cache.db')
+
+
+def _get_connection() -> sqlite3.Connection:
+    """Get SQLite connection and ensure tables exist"""
+    conn = sqlite3.connect(CACHE_DB_PATH)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS games_cache (
+            date TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS boxscore_cache (
+            game_id TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    return conn
+
+
+def cache_games(date: str, games: List[Dict[str, Any]]) -> None:
+    """
+    Cache games for a specific date.
+    Only cache if ALL games are completed (gameStatus=3).
+    
+    Args:
+        date: Date string YYYY-MM-DD
+        games: List of game dictionaries
+    """
+    # Only cache if all games are completed
+    if not games:
+        return
+    
+    all_completed = all(g.get('gameStatus') == 3 for g in games)
+    if not all_completed:
+        return
+    
+    try:
+        conn = _get_connection()
+        conn.execute(
+            'INSERT OR REPLACE INTO games_cache (date, data, cached_at) VALUES (?, ?, ?)',
+            (date, json.dumps(games), datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # Silently fail
+
+
+def get_cached_games(date: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Get cached games for a date.
+    
+    Args:
+        date: Date string YYYY-MM-DD
+        
+    Returns:
+        List of games if cached, None otherwise
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT data FROM games_cache WHERE date = ?',
+            (date,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return json.loads(row[0])
+        return None
+    except Exception:
+        return None
+
+
+def cache_boxscore(game_id: str, data: Dict[str, Any]) -> None:
+    """
+    Cache boxscore for a completed game.
+    
+    Args:
+        game_id: NBA game ID
+        data: Boxscore data dictionary
+    """
+    try:
+        conn = _get_connection()
+        conn.execute(
+            'INSERT OR REPLACE INTO boxscore_cache (game_id, data, cached_at) VALUES (?, ?, ?)',
+            (game_id, json.dumps(data), datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # Silently fail
+
+
+def get_cached_boxscore(game_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get cached boxscore for a game.
+    
+    Args:
+        game_id: NBA game ID
+        
+    Returns:
+        Boxscore data if cached, None otherwise
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT data FROM boxscore_cache WHERE game_id = ?',
+            (game_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return json.loads(row[0])
+        return None
+    except Exception:
+        return None
+
+
+def get_cache_stats() -> Dict[str, int]:
+    """Get cache statistics"""
+    try:
+        conn = _get_connection()
+        games_count = conn.execute('SELECT COUNT(*) FROM games_cache').fetchone()[0]
+        boxscore_count = conn.execute('SELECT COUNT(*) FROM boxscore_cache').fetchone()[0]
+        conn.close()
+        return {
+            "cached_dates": games_count,
+            "cached_boxscores": boxscore_count
+        }
+    except Exception:
+        return {"cached_dates": 0, "cached_boxscores": 0}

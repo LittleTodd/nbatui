@@ -321,22 +321,32 @@ function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
         const renderText = (text: string, key: string, bg?: string) => {
             if (!text) return null;
 
-            // Determine styles based on state
-            // Priority: Highlight > Team Badge > Default
-            let finalColor = marker.isLive ? 'green' : 'yellow';
+            const isFinal = game.gameStatus === 3;
+            const isFuture = game.gameStatus === 1;
+
+            // Determine base color based on game state
+            // 🟢 Live: green
+            // ⚪ Scheduled: gray (dim)
+            // 🔵 Finished: blue
+            let finalColor = marker.isLive ? 'green' : (isFinal ? 'blue' : 'gray');
             let finalBg = undefined;
             let finalBold = marker.isSelected;
+            let finalDim = isFuture && !marker.isHighlighted && !marker.isSelected;
 
             if (marker.isHighlighted) {
                 finalBg = 'yellow';
                 finalColor = 'black';
                 finalBold = true;
+                finalDim = false;
             } else if (bg) {
                 finalBg = bg;
                 finalColor = '#ffffff'; // Explicit hex white for badges
-                finalBold = true;     // Explicit bold for badges
+                finalBold = true;       // Explicit bold for badges
+                finalDim = false;
             } else if (marker.isSelected) {
                 finalColor = 'cyan';
+                finalBold = true;
+                finalDim = false;
             }
 
             return (
@@ -403,7 +413,7 @@ function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
 }
 
 // Selected game detail panel
-function GameDetail({ game, odds }: { game: Game; odds?: GameOdds }) {
+function GameDetail({ game, odds, currentIndex, totalGames }: { game: Game; odds?: GameOdds; currentIndex: number; totalGames: number }) {
     const { text: statusText, isLive, isFinal } = getGameStatusInfo(game);
     const isFuture = game.gameStatus === 1;
 
@@ -426,6 +436,14 @@ function GameDetail({ game, odds }: { game: Game; odds?: GameOdds }) {
             justifyContent="center"
         >
             <Box flexDirection="column" alignItems="center">
+                {/* Pagination Indicator */}
+                <Box marginBottom={1}>
+                    <Text dimColor>◀ </Text>
+                    <Text bold color="yellow">{currentIndex + 1}</Text>
+                    <Text dimColor>/{totalGames}</Text>
+                    <Text dimColor> ▶</Text>
+                </Box>
+
                 <Text bold color="cyan">
                     {game.awayTeam.teamCity} {game.awayTeam.teamName} @ {game.homeTeam.teamCity} {game.homeTeam.teamName}
                 </Text>
@@ -687,17 +705,42 @@ function App() {
             <Box flexDirection="row" flexGrow={1} justifyContent="center" marginTop={1}>
                 {/* Map */}
                 <Box flexDirection="column" alignItems="center">
-                    {mapWithGames.map((line, rowIdx) => (
-                        <MapLine
-                            key={rowIdx}
-                            line={line}
-                            rowIndex={rowIdx}
-                            gameColors={gameColors}
-                            games={games}
-                            odds={odds}
-                            liveDotVisible={liveDotVisible}
-                        />
-                    ))}
+                    {games.length === 0 && !loading ? (
+                        /* Empty State */
+                        <Box
+                            flexDirection="column"
+                            alignItems="center"
+                            justifyContent="center"
+                            height={mapHeight}
+                            borderStyle="round"
+                            borderColor="gray"
+                            paddingX={4}
+                            paddingY={2}
+                        >
+                            <Text bold color="yellow">🏀 No Games Scheduled 🏀</Text>
+                            <Box marginTop={1}>
+                                <Text dimColor>No NBA games found for this date.</Text>
+                            </Box>
+                            <Box marginTop={1}>
+                                <Text dimColor>Use </Text>
+                                <Text color="cyan" bold>← →</Text>
+                                <Text dimColor> to browse other dates</Text>
+                            </Box>
+                        </Box>
+                    ) : (
+                        /* Map with games */
+                        mapWithGames.map((line, rowIdx) => (
+                            <MapLine
+                                key={rowIdx}
+                                line={line}
+                                rowIndex={rowIdx}
+                                gameColors={gameColors}
+                                games={games}
+                                odds={odds}
+                                liveDotVisible={liveDotVisible}
+                            />
+                        ))
+                    )}
 
                     {/* Search / Selection Overlay */}
                     {isSearching ? (
@@ -725,7 +768,7 @@ function App() {
                                 const nextDayStr = nextDay.toISOString().slice(0, 10);
                                 gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
                             }
-                            return <GameDetail game={game} odds={gameOdds} />;
+                            return <GameDetail game={game} odds={gameOdds} currentIndex={selectedIndex} totalGames={games.length} />;
                         })()
                     )}
                 </Box>

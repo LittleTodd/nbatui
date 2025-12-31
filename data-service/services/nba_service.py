@@ -6,6 +6,7 @@ from typing import Any
 from nba_api.live.nba.endpoints import scoreboard, boxscore, playbyplay
 from nba_api.stats.static import teams
 from nba_api.stats.endpoints import leaguestandings
+from . import cache_service
 
 
 class NBAService:
@@ -32,8 +33,14 @@ class NBAService:
 
     def get_games_by_date(self, date_str: str) -> list[dict[str, Any]]:
         """
-        Get games for a specific date (YYYY-MM-DD)
+        Get games for a specific date (YYYY-MM-DD).
+        Uses cache for dates where all games are completed.
         """
+        # Check cache first
+        cached = cache_service.get_cached_games(date_str)
+        if cached is not None:
+            return cached
+        
         try:
             # Use scoreboardv2 for arbitrary dates
             from nba_api.stats.endpoints import scoreboardv2
@@ -154,7 +161,11 @@ class NBAService:
                 except Exception:
                     pass  # Silently ignore fallback errors
 
-            return list(games_map.values())
+            # Cache the results if all games are completed
+            games_list = list(games_map.values())
+            cache_service.cache_games(date_str, games_list)
+            
+            return games_list
         except Exception:
             # Silently fail
             return []
@@ -184,12 +195,24 @@ class NBAService:
     
     def get_boxscore(self, game_id: str) -> dict[str, Any]:
         """
-        Get boxscore for a specific game
+        Get boxscore for a specific game.
+        Uses cache for completed games.
         """
+        # Check cache first
+        cached = cache_service.get_cached_boxscore(game_id)
+        if cached is not None:
+            return cached
+        
         try:
             box = boxscore.BoxScore(game_id=game_id)
             data = box.get_dict()
-            return data.get("game", {})
+            game_data = data.get("game", {})
+            
+            # Cache if game is completed (gameStatus = 3)
+            if game_data and game_data.get("gameStatus") == 3:
+                cache_service.cache_boxscore(game_id, game_data)
+            
+            return game_data
         except Exception:
             return None
 
