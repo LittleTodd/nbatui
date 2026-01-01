@@ -5,8 +5,8 @@
 import React, { useState, useEffect } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
 import Spinner from 'ink-spinner';
-import { format, addDays, subDays, isSameDay } from 'date-fns';
-import { fetchTodayGames, fetchGamesByDate, checkHealth, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type Game, type GameOdds } from './services/apiClient.js';
+import { format, isSameDay } from 'date-fns';
+import { getOddsKey } from './services/apiClient.js';
 import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
 import { getTeamPosition } from './data/teamCoords.js';
 import { GameDetailPage } from './pages/GameDetailPage.js';
@@ -14,475 +14,41 @@ import { StandingsSidebar } from './components/StandingsSidebar.js';
 import { useSocialHeat, type HeatData } from './hooks/useSocialHeat.js';
 import { HeatIndicator } from './components/HeatIndicator.js';
 
-// Get geographic positions for all games
-function getGamePositions(games: Game[]): Array<{ idx: number; x: number; y: number }> {
-    return games.map((game, idx) => {
-        const pos = getTeamPosition(game.homeTeam.teamTricode);
-        return { idx, x: pos.x, y: pos.y };
-    });
-}
+import { findNearestGame } from './utils/mapNavigation.js';
 
-// Find nearest game in a given direction
-function findNearestGame(
-    games: Game[],
-    currentIndex: number,
-    direction: 'up' | 'down' | 'left' | 'right'
-): number {
-    if (games.length <= 1) return currentIndex;
+import { embedGamesInMap } from './utils/mapRendering.js';
+import { MapLine } from './components/MapLine.js';
 
-    const positions = getGamePositions(games);
-    const current = positions.find(p => p.idx === currentIndex);
-    // If current selected game is not in list (e.g. filtered out or weird state), default to 0
-    if (!current) return 0;
-
-    let bestIdx = currentIndex;
-    let bestScore = Infinity;
-
-    for (const pos of positions) {
-        if (pos.idx === currentIndex) continue;
-
-        const dx = pos.x - current.x;
-        const dy = pos.y - current.y;
-
-        // Check if this game is in the correct direction
-        let isValidDirection = false;
-        let primaryDistance = 0;
-        let secondaryDistance = 0;
-
-        switch (direction) {
-            case 'up':
-                isValidDirection = dy < -2;
-                primaryDistance = Math.abs(dy);
-                secondaryDistance = Math.abs(dx);
-                break;
-            case 'down':
-                isValidDirection = dy > 2;
-                primaryDistance = Math.abs(dy);
-                secondaryDistance = Math.abs(dx);
-                break;
-            case 'left':
-                isValidDirection = dx < -2;
-                primaryDistance = Math.abs(dx);
-                secondaryDistance = Math.abs(dy);
-                break;
-            case 'right':
-                isValidDirection = dx > 2;
-                primaryDistance = Math.abs(dx);
-                secondaryDistance = Math.abs(dy);
-                break;
-        }
-
-        if (isValidDirection) {
-            const score = primaryDistance + secondaryDistance * 0.3;
-            if (score < bestScore) {
-                bestScore = score;
-                bestIdx = pos.idx;
-            }
-        }
-    }
-
-    // Wrap around logic if no game found in direction
-    if (bestIdx === currentIndex) {
-        let furthestIdx = currentIndex;
-        let furthestValue = -Infinity;
-
-        for (const pos of positions) {
-            if (pos.idx === currentIndex) continue;
-            let value = 0;
-            switch (direction) {
-                case 'up': value = pos.y; break;
-                case 'down': value = -pos.y; break;
-                case 'left': value = pos.x; break;
-                case 'right': value = -pos.x; break;
-            }
-            if (value > furthestValue) {
-                furthestValue = value;
-                furthestIdx = pos.idx;
-            }
-        }
-        return furthestIdx;
-    }
-
-    return bestIdx;
-}
-
-// Convert percentage position to character position
-function percentToChar(percent: number, maxChars: number): number {
-    return Math.round((percent / 100) * (maxChars - 1));
-}
-
-// Create a marker for a game without number prefix
-function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolean = false, odds?: GameOdds, heat?: HeatData): string {
-    const isLive = game.gameStatus === 2;
-    const isFuture = game.gameStatus === 1;
-
-    const away = game.awayTeam.teamTricode;
-    const home = game.homeTeam.teamTricode;
-    const awayScore = game.awayTeam.score;
-    const homeScore = game.homeTeam.score;
-
-    let content = '';
-
-    if (isFuture) {
-        content = `${away}-${home}`;
-    } else {
-        content = `${away} ${awayScore}-${homeScore} ${home}`;
-    }
-
-    // Add live indicator prefix if game is live
-    const livePrefix = isLive ? '●● ' : '';
-
-    // Add Heat Icon to marker if very hot
-    const heatSuffix = (heat?.level === 'fire' || heat?.level === 'hot') ? ' 🔥' : '';
-
-    if (isSelected) {
-        return `${livePrefix}[${content}${heatSuffix}]`;
-    } else if (isHighlighted) {
-        return `${livePrefix}»${content}${heatSuffix}«`;
-    } else if (isLive) {
-        return `●● ${content}${heatSuffix}`;
-    } else {
-        return `${content}${heatSuffix}`;
-    }
-}
-
-// Helper to check if game matches filter
-function checkGameMatchesFilter(game: Game, filter: string): boolean {
-    if (!filter) return false;
-    const lowerFilter = filter.toLowerCase();
-    return game.homeTeam.teamTricode.toLowerCase().startsWith(lowerFilter) ||
-        game.awayTeam.teamTricode.toLowerCase().startsWith(lowerFilter);
-}
-
-// Embed game markers into map lines with collision detection
-function embedGamesInMap(
-    mapLines: string[],
-    games: Game[],
-    selectedIndex: number,
-    termWidth: number,
-    searchFilter: string = '',
-    heatMap: Record<string, HeatData> = {}
-): { lines: string[]; gameColors: Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; heat?: HeatData }> } {
-    const lines = mapLines.map(l => l.padEnd(termWidth, ' ').slice(0, termWidth));
-    const gameColors = new Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; heat?: HeatData }>();
-
-    const maxHeight = lines.length;
-    const maxWidth = termWidth;
-
-    const gamesWithPos = games.map((game, idx) => {
-        const pos = getTeamPosition(game.homeTeam.teamTricode);
-        const isSelected = idx === selectedIndex;
-        const isHighlighted = checkGameMatchesFilter(game, searchFilter);
-        const heat = heatMap[game.gameId];
-        const marker = createGameMarker(game, isSelected, isHighlighted, undefined, heat);
-        return {
-            game,
-            idx,
-            row: percentToChar(pos.y, maxHeight),
-            col: percentToChar(pos.x, maxWidth),
-            markerLen: marker.length,
-            isLive: game.gameStatus === 2,
-            isSelected,
-            isHighlighted,
-            heat
-        };
-    });
-
-    gamesWithPos.sort((a, b) => a.col - b.col);
-
-    const occupiedRanges = new Map<number, Array<{ start: number; end: number }>>();
-
-    for (const gamePos of gamesWithPos) {
-        const { idx, markerLen, isLive, isSelected, isHighlighted, heat } = gamePos;
-        let { row, col } = gamePos;
-        const marker = createGameMarker(gamePos.game, isSelected, isHighlighted, undefined, heat);
-
-        col = Math.max(0, Math.min(col, maxWidth - markerLen));
-        row = Math.max(0, Math.min(row, maxHeight - 1));
-
-        const MIN_GAP = 3;
-
-        let attempts = 0;
-        while (attempts < maxHeight) {
-            const ranges = occupiedRanges.get(row) || [];
-            const hasCollision = ranges.some(r =>
-                (col < r.end + MIN_GAP && col + markerLen > r.start - MIN_GAP)
-            );
-
-            if (!hasCollision) break;
-            row = (row + 1) % maxHeight;
-            attempts++;
-        }
-
-        const ranges = occupiedRanges.get(row) || [];
-        ranges.push({ start: col, end: col + markerLen });
-        occupiedRanges.set(row, ranges);
-
-        const line = lines[row];
-        if (line) {
-            const before = line.slice(0, col);
-            const after = line.slice(col + markerLen);
-            lines[row] = before + marker + after;
-            gameColors.set(idx, { row, col, isLive, isSelected, isHighlighted, heat });
-        }
-    }
-
-    return { lines, gameColors };
-}
-
-// Map Line component with colored markers
-import { TEAM_BG_COLORS } from './data/teamColors.js';
-
-function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: {
-    line: string;
-    rowIndex: number;
-    gameColors: Map<number, { row: number; col: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; heat?: HeatData }>;
-    games: Game[];
-    odds: Record<string, GameOdds>;
-    liveDotVisible: boolean;
-}) {
-    const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string; heat?: HeatData }> = [];
-
-    gameColors.forEach((pos, gameIdx) => {
-        if (pos.row === rowIndex) {
-            const game = games[gameIdx];
-            if (!game) return;
-            const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
-            let gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate)];
-
-            if (!gameOdds && gameDate) {
-                const nextDay = new Date(gameDate);
-                nextDay.setDate(nextDay.getDate() + 1);
-                const nextDayStr = nextDay.toISOString().slice(0, 10);
-                gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
-            }
-
-            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds, pos.heat);
-            markersOnRow.push({
-                col: pos.col,
-                length: marker.length,
-                isLive: pos.isLive,
-                isSelected: pos.isSelected,
-                isHighlighted: pos.isHighlighted,
-                gameIdx,
-                content: marker,
-                heat: pos.heat
-            });
-        }
-    });
-
-    if (markersOnRow.length === 0) {
-        return <Text dimColor>{line}</Text>;
-    }
-
-    markersOnRow.sort((a, b) => a.col - b.col);
-
-    const segments: React.ReactNode[] = [];
-    let lastEnd = 0;
-
-    markersOnRow.forEach((marker, i) => {
-        if (marker.col > lastEnd) {
-            segments.push(
-                <Text key={`dim-${i}`} dimColor>
-                    {line.slice(lastEnd, marker.col)}
-                </Text>
-            );
-        }
-
-        const rawContent = marker.content;
-        const game = games[marker.gameIdx];
-        const away = game.awayTeam.teamTricode;
-        const home = game.homeTeam.teamTricode;
-
-        const awayColor = TEAM_BG_COLORS[away] || '#333';
-        const homeColor = TEAM_BG_COLORS[home] || '#333';
-
-        const markerElements: React.ReactNode[] = [];
-
-        const renderText = (text: string, key: string, bg?: string) => {
-            if (!text) return null;
-
-            const isFinal = game.gameStatus === 3;
-            const isFuture = game.gameStatus === 1;
-
-            let finalColor = marker.isLive ? 'green' : (isFinal ? 'blue' : 'gray');
-            let finalBg = undefined;
-            let finalBold = marker.isSelected;
-            let finalDim = isFuture && !marker.isHighlighted && !marker.isSelected;
-
-            if (marker.isHighlighted) {
-                finalBg = 'yellow';
-                finalColor = 'black';
-                finalBold = true;
-                finalDim = false;
-            } else if (bg) {
-                // Team Color Block - Always prioritize this for the tricode background
-                finalBg = bg;
-                finalColor = '#ffffff'; // White text on team color
-                finalBold = true;
-                finalDim = false;
-            } else if (marker.heat?.level === 'fire' || marker.heat?.level === 'hot') {
-                // Hot games get special text color for scores/info
-                finalColor = marker.heat.level === 'fire' ? 'red' : 'orange';
-                finalBold = true;
-                if (marker.isSelected) {
-                    finalColor = 'cyan';
-                }
-            } else if (marker.isSelected) {
-                finalColor = 'cyan';
-                finalBold = true;
-                finalDim = false;
-            }
-
-            return (
-                <Text
-                    key={key}
-                    color={finalColor}
-                    backgroundColor={finalBg}
-                    bold={finalBold}
-                >
-                    {text}
-                </Text>
-            );
-        };
-
-        let displayContent = rawContent;
-        if (marker.isLive && rawContent.startsWith('●●')) {
-            const dot = liveDotVisible ? '●' : '○';
-            displayContent = dot + rawContent.slice(2);
-        }
-
-        const parts1 = displayContent.split(away);
-
-        if (parts1.length >= 2) {
-            const preAway = parts1[0];
-            const postAway = parts1.slice(1).join(away);
-
-            markerElements.push(renderText(preAway, `pre-${i}`));
-            markerElements.push(renderText(` ${away} `, `away-${i}`, awayColor));
-
-            const parts2 = postAway.split(home);
-            if (parts2.length >= 2) {
-                const mid = parts2[0];
-                const postHome = parts2.slice(1).join(home);
-
-                markerElements.push(renderText(mid, `mid-${i}`));
-                markerElements.push(renderText(` ${home} `, `home-${i}`, homeColor));
-                markerElements.push(renderText(postHome, `post-${i}`));
-            } else {
-                markerElements.push(renderText(postAway, `rest-${i}`));
-            }
-        } else {
-            markerElements.push(renderText(displayContent, `full-${i}`));
-        }
-
-        segments.push(
-            <Text key={`marker-wrap-${i}`}>
-                {markerElements}
-            </Text>
-        );
-
-        lastEnd = marker.col + marker.length;
-    });
-
-    if (lastEnd < line.length) {
-        segments.push(
-            <Text key="dim-end" dimColor>
-                {line.slice(lastEnd)}
-            </Text>
-        );
-    }
-
-    return <Text>{segments}</Text>;
-}
-
-// Selected game detail panel
-function GameDetail({ game, odds, currentIndex, totalGames, heat }: { game: Game; odds?: GameOdds; currentIndex: number; totalGames: number; heat?: HeatData }) {
-    const { text: statusText, isLive, isFinal } = getGameStatusInfo(game);
-    const isFuture = game.gameStatus === 1;
-
-    // Blinking animation for live indicator
-    const [dotVisible, setDotVisible] = useState(true);
-    useEffect(() => {
-        if (!isLive) return;
-        const timer = setInterval(() => {
-            setDotVisible(v => !v);
-        }, 500);
-        return () => clearInterval(timer);
-    }, [isLive]);
-
-    // Border color reacts to heat
-    let borderColor = 'cyan';
-    if (heat?.level === 'fire') borderColor = 'red';
-    else if (heat?.level === 'hot') borderColor = 'orange';
-
-    return (
-        <Box
-            borderStyle="round"
-            borderColor={borderColor}
-            paddingX={2}
-            marginTop={1}
-            justifyContent="center"
-        >
-            <Box flexDirection="column" alignItems="center">
-                {/* Pagination Indicator */}
-                <Box marginBottom={1}>
-                    <Text dimColor>◀ </Text>
-                    <Text bold color="yellow">{currentIndex + 1}</Text>
-                    <Text dimColor>/{totalGames}</Text>
-                    <Text dimColor> ▶</Text>
-                </Box>
-
-                <Text bold color="cyan">
-                    {game.awayTeam.teamCity} {game.awayTeam.teamName} @ {game.homeTeam.teamCity} {game.homeTeam.teamName}
-                </Text>
-                <Box gap={2}>
-                    <Text bold>{game.awayTeam.teamTricode}</Text>
-                    <Text bold color="white" backgroundColor={isLive ? "green" : undefined}>
-                        {game.awayTeam.score} - {game.homeTeam.score}
-                    </Text>
-                    <Text bold>{game.homeTeam.teamTricode}</Text>
-                </Box>
-
-                {/* Social Heat Indicator */}
-                {heat && heat.level !== 'cold' && (
-                    <Box marginTop={0}>
-                        <HeatIndicator level={heat.level} count={heat.count} />
-                    </Box>
-                )}
-
-                {/* Show odds for future games */}
-                {isFuture && odds && odds.awayOdds > 0 && (
-                    <Box gap={1}>
-                        <Text color="yellow">📊 Odds:</Text>
-                        <Text color="white">{game.awayTeam.teamTricode}</Text>
-                        <Text color="green" bold>{odds.awayOdds.toFixed(2)}</Text>
-                        <Text color="gray">|</Text>
-                        <Text color="green" bold>{odds.homeOdds.toFixed(2)}</Text>
-                        <Text color="white">{game.homeTeam.teamTricode}</Text>
-                    </Box>
-                )}
-                <Text color={isLive ? "green" : "gray"}>
-                    {isLive && (dotVisible ? "● " : "○ ")}{isLive && "LIVE "}{statusText}
-                </Text>
-            </Box>
-        </Box>
-    );
-}
+import { GameDetail } from './components/GameDetail.js';
+import { Header, Footer } from './components/Layout.js';
 
 // Main App
+// Main App
+import { useGameStore } from './store/gameStore.js';
+
 function App() {
     const { exit } = useApp();
-    const [games, setGames] = useState<Game[]>([]);
-    const [currentDate, setCurrentDate] = useState<Date>(new Date());
-    const [selectedIndex, setSelectedIndex] = useState(0);
-    const [connected, setConnected] = useState(false);
-    const [loading, setLoading] = useState(true);
+
+    // Store State
+    const games = useGameStore(state => state.games);
+    const currentDate = useGameStore(state => state.currentDate);
+    const selectedIndex = useGameStore(state => state.selectedIndex);
+    const connected = useGameStore(state => state.connected);
+    const loading = useGameStore(state => state.loading);
+    const odds = useGameStore(state => state.odds);
+
+    // Store Actions
+    const loadGamesForDate = useGameStore(state => state.loadGamesForDate);
+    const checkConnection = useGameStore(state => state.checkConnection);
+    const setSelectedIndex = useGameStore(state => state.setSelectedIndex);
+    const moveSelection = useGameStore(state => state.moveSelection);
+    const changeDate = useGameStore(state => state.changeDate);
+
+    // Local UI State
     const [view, setView] = useState<'map' | 'detail'>('map');
     const [searchFilter, setSearchFilter] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [showStandings, setShowStandings] = useState(false);
-    const [odds, setOdds] = useState<Record<string, GameOdds>>({});
 
     // Social Heat Hook
     const heatMap = useSocialHeat(games, odds);
@@ -498,99 +64,13 @@ function App() {
         return () => clearInterval(timer);
     }, [games]);
 
-
-    // Helper to robustly find odds across potential date boundaries
-    const findGameOdds = (game: Game, odds: Record<string, GameOdds>) => {
-        if (!game || !odds) return undefined;
-        const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
-        if (!gameDate) return undefined;
-
-        // Try exact match
-        let key = getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
-        if (odds[key]) return odds[key];
-
-        // Try next day (common for late games or timezone shifts)
-        const nextDay = new Date(gameDate);
-        nextDay.setDate(nextDay.getDate() + 1);
-        const nextDayStr = nextDay.toISOString().slice(0, 10);
-        key = getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr);
-        if (odds[key]) return odds[key];
-
-        // Try previous day
-        const prevDay = new Date(gameDate);
-        prevDay.setDate(prevDay.getDate() - 1);
-        const prevDayStr = prevDay.toISOString().slice(0, 10);
-        key = getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, prevDayStr);
-        return odds[key];
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-
-    const loadGamesForDate = async (date: Date, isBackgroundRefresh = false) => {
-        if (!isBackgroundRefresh) {
-            setLoading(true);
-        }
-
-        const offset = new Date().getTimezoneOffset();
-        let queryDate = date;
-        const isViewingToday = isSameDay(date, new Date());
-
-        if (offset <= 0) {
-            queryDate = subDays(date, 1);
-        }
-
-        const dateStr = format(queryDate, 'yyyy-MM-dd');
-
-        // Check if the date is DEEP in the past (2 days ago or more)
-        // We allow "Yesterday" because timezones might mean Yesterday is actually the active game day.
-        const now = new Date();
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const startOfYesterday = subDays(startOfToday, 1);
-
-        // Treat as "Past" only if it's strictly before Yesterday
-        const isPastDate = queryDate.getTime() < startOfYesterday.getTime();
-
-        // For real-time data: use fetchTodayGames when viewing today (has live scores)
-        // For historical data: use fetchGamesByDate
-        const gamesPromise = isViewingToday
-            ? fetchTodayGames()
-            : fetchGamesByDate(dateStr);
-
-        let gamesData: Game[];
-        let oddsData: Record<string, GameOdds> = {};
-
-        if (isPastDate) {
-            // Optimization: Don't fetch odds for historical games (older than yesterday)
-            [gamesData] = await Promise.all([gamesPromise]);
-        } else {
-            // Fetch odds for Today, Yesterday, and Future
-            [gamesData, oddsData] = await Promise.all([
-                gamesPromise,
-                fetchPolymarketOdds()
-            ]);
-        }
-
-        setGames(gamesData);
-        setOdds(oddsData);
-        if (!isBackgroundRefresh) {
-            setLoading(false);
-        }
-        setLastUpdated(new Date());
-
-        if (!isBackgroundRefresh && gamesData.length > 0) setSelectedIndex(0);
-    };
-
-    const checkConnection = async () => {
-        const isHealthy = await checkHealth();
-        setConnected(isHealthy);
-    };
-
+    // Initial Load & Connection Check
     useEffect(() => {
         loadGamesForDate(currentDate);
         checkConnection();
     }, [currentDate]);
 
+    // Background Refresh
     useEffect(() => {
         const timer = setInterval(() => {
             const hasLiveGames = games.some(g => g.gameStatus === 2);
@@ -659,19 +139,19 @@ function App() {
         }
 
         if (key.upArrow) {
-            setSelectedIndex(prev => (prev > 0 ? prev - 1 : games.length - 1));
+            moveSelection('up');
         }
 
         if (key.downArrow) {
-            setSelectedIndex(prev => (prev < games.length - 1 ? prev + 1 : 0));
+            moveSelection('down');
         }
 
         if (key.leftArrow) {
-            setCurrentDate(prev => subDays(prev, 1));
+            changeDate('prev');
         }
 
         if (key.rightArrow) {
-            setCurrentDate(prev => addDays(prev, 1));
+            changeDate('next');
         }
     });
 
@@ -718,12 +198,11 @@ function App() {
                 </Box>
             )}
 
-            <Box justifyContent="center" flexDirection="column" alignItems="center">
-                <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
-                <Text bold color="yellow">📅 {dateDisplay} 📅</Text>
-            </Box>
+            {/* Header */}
+            <Header dateDisplay={dateDisplay} />
 
             <Box flexDirection="row" flexGrow={1} justifyContent="center" marginTop={1}>
+                {/* ... Main Content ... */}
                 <Box flexDirection="column" alignItems="center">
                     {games.length === 0 && !loading ? (
                         <Box
@@ -795,16 +274,13 @@ function App() {
                 <StandingsSidebar visible={showStandings} />
             </Box>
 
-            <Box justifyContent="space-between" paddingX={1} marginTop={1}>
-                <Box>
-                    <Text color={connected ? 'green' : 'red'}>
-                        {connected ? '● Connected' : '● Disconnected'}
-                    </Text>
-                    {loading && <Text color="yellow"> <Spinner type="dots" /></Text>}
-                </Box>
-                <Text dimColor>{games.length} games • ←/→: date | ↑/↓: select | s: standings | Enter: detail</Text>
-                <Text dimColor>r: refresh | q: quit</Text>
-            </Box>
+            {/* Footer */}
+            <Footer
+                connected={connected}
+                loading={loading}
+                gamesCount={games.length}
+                SpinnerComponent={Spinner}
+            />
         </Box>
     );
 }

@@ -29,6 +29,13 @@ def _get_connection() -> sqlite3.Connection:
             cached_at TEXT NOT NULL
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS social_cache (
+            key TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        )
+    ''')
     conn.commit()
     return conn
 
@@ -134,16 +141,64 @@ def get_cached_boxscore(game_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def cache_social(key: str, data: Dict[str, Any]) -> None:
+    """
+    Cache social data (tweets/heat) persistently.
+    
+    Args:
+        key: Unique key (e.g., heat_LAL_BOS_2023-12-25)
+        data: Social data dictionary
+    """
+    try:
+        conn = _get_connection()
+        conn.execute(
+            'INSERT OR REPLACE INTO social_cache (key, data, cached_at) VALUES (?, ?, ?)',
+            (key, json.dumps(data), datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def get_cached_social(key: str) -> Optional[Dict[str, Any]]:
+    """
+    Get cached social data.
+    
+    Args:
+        key: Unique key
+        
+    Returns:
+        Data if cached, None otherwise
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT data FROM social_cache WHERE key = ?',
+            (key,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return json.loads(row[0])
+        return None
+    except Exception:
+        return None
+
+
 def get_cache_stats() -> Dict[str, int]:
     """Get cache statistics"""
     try:
         conn = _get_connection()
         games_count = conn.execute('SELECT COUNT(*) FROM games_cache').fetchone()[0]
         boxscore_count = conn.execute('SELECT COUNT(*) FROM boxscore_cache').fetchone()[0]
+        social_count = conn.execute('SELECT COUNT(*) FROM social_cache').fetchone()[0]
         conn.close()
         return {
             "cached_dates": games_count,
-            "cached_boxscores": boxscore_count
+            "cached_boxscores": boxscore_count,
+            "cached_social": social_count
         }
     except Exception:
         return {"cached_dates": 0, "cached_boxscores": 0}

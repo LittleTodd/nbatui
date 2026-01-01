@@ -42,7 +42,7 @@ export async function checkHealth(): Promise<boolean> {
         const res = await fetch(`${BASE_URL}/health`, {
             signal: AbortSignal.timeout(3000)
         });
-        const data: HealthResponse = await res.json();
+        const data = (await res.json()) as HealthResponse;
         return data.status === 'ok';
     } catch {
         return false;
@@ -56,7 +56,7 @@ export async function fetchTodayGames(): Promise<Game[]> {
     try {
         const res = await fetch(`${BASE_URL}/games/today`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: GamesResponse = await res.json();
+        const data = (await res.json()) as GamesResponse;
         return data.games;
     } catch {
         // Silently fail - don't log to terminal (causes flicker)
@@ -71,7 +71,7 @@ export async function fetchGamesByDate(date: string): Promise<Game[]> {
     try {
         const res = await fetch(`${BASE_URL}/games/date/${date}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: GamesResponse = await res.json();
+        const data = (await res.json()) as GamesResponse;
         return data.games;
     } catch {
         // Silently fail
@@ -86,7 +86,7 @@ export async function fetchLiveGames(): Promise<Game[]> {
     try {
         const res = await fetch(`${BASE_URL}/games/live`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: GamesResponse = await res.json();
+        const data = (await res.json()) as GamesResponse;
         return data.games;
     } catch {
         // Silently fail
@@ -108,9 +108,9 @@ export function parseETTimeToLocal(statusText: string, gameDate: string): string
     if (!match) return '';
 
     try {
-        let hours = parseInt(match[1], 10);
-        const minutes = parseInt(match[2], 10);
-        const isPM = match[3].toLowerCase() === 'pm';
+        let hours = parseInt(match[1] || '0', 10);
+        const minutes = parseInt(match[2] || '0', 10);
+        const isPM = (match[3] || '').toLowerCase() === 'pm';
 
         // Convert to 24-hour format
         if (isPM && hours !== 12) hours += 12;
@@ -258,7 +258,7 @@ export async function fetchPolymarketOdds(): Promise<Record<string, GameOdds>> {
     try {
         const res = await fetch(`${BASE_URL}/api/polymarket/odds`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: OddsResponse = await res.json();
+        const data = (await res.json()) as OddsResponse;
         return data.odds;
     } catch {
         return {};
@@ -310,14 +310,19 @@ export interface TweetsResponse {
     tweets: Tweet[];
 }
 
-/**
- * Fetch social heat for a game
- */
-export async function fetchGameHeat(team1: string, team2: string): Promise<SocialHeat | null> {
+
+export async function fetchGameHeat(team1: string, team2: string, status?: number, date?: string): Promise<SocialHeat | null> {
     try {
-        const res = await fetch(`${BASE_URL}/social/heat/${team1}/${team2}`);
+        let url = `${BASE_URL}/social/heat/${team1}/${team2}`;
+        const params = new URLSearchParams();
+        if (status) params.append('status', status.toString());
+        if (date) params.append('date', date);
+
+        if (params.size > 0) url += `?${params.toString()}`;
+
+        const res = await fetch(url);
         if (!res.ok) return null;
-        return await res.json();
+        return (await res.json()) as SocialHeat;
     } catch {
         return null;
     }
@@ -326,11 +331,18 @@ export async function fetchGameHeat(team1: string, team2: string): Promise<Socia
 /**
  * Fetch top tweets/comments for a game
  */
-export async function fetchGameTweets(team1: string, team2: string): Promise<Tweet[]> {
+export async function fetchGameTweets(team1: string, team2: string, status?: number, date?: string): Promise<Tweet[]> {
     try {
-        const res = await fetch(`${BASE_URL}/social/tweets/${team1}/${team2}`);
+        let url = `${BASE_URL}/social/tweets/${team1}/${team2}`;
+        const params = new URLSearchParams();
+        if (status) params.append('status', status.toString());
+        if (date) params.append('date', date);
+
+        if (params.size > 0) url += `?${params.toString()}`;
+
+        const res = await fetch(url);
         if (!res.ok) return [];
-        const data: TweetsResponse = await res.json();
+        const data = (await res.json()) as TweetsResponse;
         return data.tweets;
     } catch {
         return [];

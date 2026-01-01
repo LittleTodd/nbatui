@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet } from '../services/apiClient.js';
+import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet } from '../services/apiClient.js';
 import { TEAM_BG_COLORS } from '../data/teamColors.js';
 import { HeatIndicator } from '../components/HeatIndicator.js';
 
@@ -42,15 +42,29 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
         const team1 = game.awayTeam.teamName;
         const team2 = game.homeTeam.teamName;
 
-        Promise.all([
-            fetchGameHeat(team1, team2),
-            fetchGameTweets(team1, team2)
-        ]).then(([heatData, tweetsData]) => {
-            if (mounted) {
-                setSocialHeat(heatData);
-                setTweets(tweetsData);
+        // Check for 6-month limit
+        const gameDateStr = game.gameTimeUTC?.slice(0, 10);
+        let skipSocial = false;
+        if (gameDateStr) {
+            const gameDate = new Date(gameDateStr);
+            const sixMonthsAgo = new Date();
+            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+            if (gameDate < sixMonthsAgo) {
+                skipSocial = true;
             }
-        });
+        }
+
+        if (!skipSocial) {
+            Promise.all([
+                fetchGameHeat(team1, team2, game.gameStatus, gameDateStr),
+                fetchGameTweets(team1, team2, game.gameStatus, gameDateStr)
+            ]).then(([heatData, tweetsData]) => {
+                if (mounted) {
+                    setSocialHeat(heatData);
+                    setTweets(tweetsData);
+                }
+            });
+        }
 
         if (isScheduled) {
             // For scheduled games, fetch standings and odds for preview
@@ -292,8 +306,8 @@ function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game
                     <Box justifyContent="center">
                         <Text dimColor>{'─'.repeat(40)}</Text>
                     </Box>
-                    <Box flexDirection="column" marginTop={1} paddingX={1}>
-                        <Text bold color="cyan" alignSelf="center">💬 Pre-Game Chatter</Text>
+                    <Box flexDirection="column" marginTop={1} paddingX={1} alignItems="center">
+                        <Text bold color="cyan">💬 Pre-Game Chatter</Text>
                         {tweets.slice(0, 3).map((t, i) => (
                             <Box key={i} flexDirection="column" marginTop={1}>
                                 <Text dimColor>@{t.user} • {t.likes} pts</Text>

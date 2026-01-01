@@ -2,47 +2,73 @@
 Social Media Router
 Endpoints for Reddit heat and comments (Phase 2)
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from services.reddit_service import RedditService
-from typing import Any
+from services import cache_service
+from typing import Any, Optional
 import time
+from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/social", tags=["social"])
 reddit_service = RedditService()
 
-# Simple in-memory cache to avoid hitting Reddit too hard
+# Simple in-memory cache for Live/Scheduled games (short term)
 # Key: {game_key}_{type} -> {data: ..., timestamp: ...}
-_cache = {}
+_mem_cache = {}
 CACHE_TTL = 300  # 5 minutes
 
-def get_from_cache(key: str):
-    if key in _cache:
-        item = _cache[key]
+def get_from_mem_cache(key: str):
+    if key in _mem_cache:
+        item = _mem_cache[key]
         if time.time() - item['timestamp'] < CACHE_TTL:
             return item['data']
     return None
 
-def set_cache(key: str, data: Any):
-    _cache[key] = {
+def set_mem_cache(key: str, data: Any):
+    _mem_cache[key] = {
         'data': data,
         'timestamp': time.time()
     }
 
 @router.get("/heat/{team1}/{team2}")
-def get_game_heat(team1: str, team2: str):
+def get_game_heat(
+    team1: str, 
+    team2: str, 
+    status: Optional[int] = Query(None), 
+    date: Optional[str] = Query(None)
+):
     """
-    Get social media discussion heat (Reddit Comment Count)
+    Get social media heat.
+    - If game is FINAL (status=3), try to load from persistent DB or save to DB.
+    - Else use in-memory cache.
     """
-    cache_key = f"heat_{team1}_{team2}"
-    cached = get_from_cache(cache_key)
+    # 1. Check Persistent Cache for Final Games
+    db_key = f"heat_{team1}_{team2}_{date}"
+    if status == 3 and date:
+        cached = cache_service.get_cached_social(db_key)
+        if cached:
+            return cached
+
+    # 2. Check Memory Cache (for all games)
+    mem_key = f"heat_{team1}_{team2}"
+    cached = get_from_mem_cache(mem_key)
     if cached:
         return cached
 
-    # 1. Search for thread
+    # 3. Check for old games (No fetch if > 6 months)
+    # Note: Frontend should usually block this, but safety check here
+    if date:
+        try:
+            game_date = datetime.strptime(date, "%Y-%m-%d")
+            if datetime.now() - game_date > timedelta(days=180):
+                 return {"count": 0, "level": "cold", "trending": False, "message": "Archived"}
+        except:
+            pass
+
+    # 4. Search Reddit
     thread = reddit_service.find_game_thread(team1, team2)
     
     if not thread:
-        # Fallback response for "Cold"
         return {
             "count": 0,
             "level": "cold",
@@ -65,33 +91,60 @@ def get_game_heat(team1: str, team2: str):
         "count": count,
         "level": level,
         "trending": count > 500,
-        "school_thread_id": thread['id'], # Internal debugging
+        "school_thread_id": thread['id'],
         "url": thread['url']
     }
     
-    set_cache(cache_key, result)
+    # 5. Save Logic
+    set_mem_cache(mem_key, result)
+    
+    # If Final, Archive it persistently
+    if status == 3 and date:
+        cache_service.cache_social(db_key, result)
+
     return result
 
 
 @router.get("/tweets/{team1}/{team2}")
-def get_game_tweets(team1: str, team2: str, limit: int = 5):
+def get_game_tweets(
+    team1: str, 
+    team2: str, 
+    limit: int = 5,
+    status: Optional[int] = Query(None),
+    date: Optional[str] = Query(None)
+):
     """
-    Get top comments from Reddit Game Thread
+    Get top comments.
     """
-    cache_key = f"comments_{team1}_{team2}_{limit}"
-    cached = get_from_cache(cache_key)
+    # 1. Check Persistent Cache
+    db_key = f"comments_{team1}_{team2}_{date}_{limit}"
+    if status == 3 and date:
+        cached = cache_service.get_cached_social(db_key)
+        if cached:
+            return cached
+
+    # 2. Check Memory Cache
+    mem_key = f"comments_{team1}_{team2}_{limit}"
+    cached = get_from_mem_cache(mem_key)
     if cached:
         return cached
+        
+    # 3. Old Game Check
+    if date:
+        try:
+            game_date = datetime.strptime(date, "%Y-%m-%d")
+            if datetime.now() - game_date > timedelta(days=180):
+                 return {"tweets": []}
+        except:
+            pass
 
-    # 1. We need the thread ID first
+    # 4. Fetch
     thread = reddit_service.find_game_thread(team1, team2)
     if not thread:
         return {"tweets": []}
         
-    # 2. Fetch comments
     comments = reddit_service.get_top_comments(thread['id'], limit=limit)
     
-    # Format for frontend (mimic tweet structure)
     formatted_comments = []
     for c in comments:
         formatted_comments.append({
@@ -102,5 +155,10 @@ def get_game_tweets(team1: str, team2: str, limit: int = 5):
         })
         
     result = {"tweets": formatted_comments}
-    set_cache(cache_key, result)
+    
+    # 5. CACHE
+    set_mem_cache(mem_key, result)
+    if status == 3 and date:
+        cache_service.cache_social(db_key, result)
+        
     return result

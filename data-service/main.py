@@ -23,6 +23,7 @@ app.add_middleware(
 )
 
 # Include routers
+# Include routers
 app.include_router(games.router)
 app.include_router(social.router)
 app.include_router(polymarket.router)
@@ -32,6 +33,19 @@ app.include_router(polymarket.router)
 async def health_check():
     """Health check endpoint"""
     return {"status": "ok", "service": "nba-data-service"}
+
+
+# Background Worker
+from workers.social_worker import SocialPrefetchWorker
+worker = SocialPrefetchWorker()
+
+@app.on_event("startup")
+async def startup_event():
+    worker.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    worker.stop()
 
 
 if __name__ == "__main__":
