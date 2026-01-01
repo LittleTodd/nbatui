@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Text } from 'ink';
 import type { Game, GameOdds } from '../services/apiClient.js';
 import type { HeatData } from '../hooks/useSocialHeat.js';
@@ -19,7 +19,7 @@ interface MapLineProps {
     liveDotVisible: boolean;
 }
 
-export function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: MapLineProps) {
+function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisible }: MapLineProps) {
     const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string; heat?: HeatData; isCrunchTime?: boolean }> = [];
 
     gameColors.forEach((pos, gameIdx) => {
@@ -184,3 +184,32 @@ export function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisibl
 
     return <Text>{segments}</Text>;
 }
+
+export const MapLine = memo(MapLineComponent, (prev, next) => {
+    // If props that affect content directly change, re-render
+    if (prev.line !== next.line) return false;
+    if (prev.games !== next.games) return false;
+    if (prev.odds !== next.odds) return false;
+    if (prev.rowIndex !== next.rowIndex) return false;
+    // Note: gameColors is a Map, so strict equality might be tricky if it's recreated.
+    // However, we plan to memoize gameColors in parent.
+    if (prev.gameColors !== next.gameColors) return false;
+
+    // If only liveDotVisible changed, check if we need to update
+    if (prev.liveDotVisible !== next.liveDotVisible) {
+        // Check if any game on this row is live or crunch time
+        // We iterate gameColors values
+        let needsUpdate = false;
+        for (const color of next.gameColors.values()) {
+            if (color.row === next.rowIndex) {
+                if (color.isLive || color.isCrunchTime) {
+                    needsUpdate = true;
+                    break;
+                }
+            }
+        }
+        return !needsUpdate; // if needsUpdate is true, return false (re-render)
+    }
+
+    return true;
+});
