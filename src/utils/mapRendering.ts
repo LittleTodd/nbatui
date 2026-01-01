@@ -9,7 +9,14 @@ export function percentToChar(percent: number, maxChars: number): number {
 }
 
 // Create a marker for a game without number prefix
-export function createGameMarker(game: Game, isSelected: boolean, isHighlighted: boolean = false, odds?: GameOdds, heat?: HeatData): string {
+export function createGameMarker(
+    game: Game,
+    isSelected: boolean,
+    isHighlighted: boolean = false,
+    odds?: GameOdds,
+    heat?: HeatData,
+    isCrunchTime: boolean = false
+): string {
     const isLive = game.gameStatus === 2;
     const isFuture = game.gameStatus === 1;
 
@@ -22,8 +29,23 @@ export function createGameMarker(game: Game, isSelected: boolean, isHighlighted:
 
     if (isFuture) {
         content = `${away}-${home}`;
+        // Hover Stat: Odds
+        if (isSelected && odds) {
+            const spread = odds.homeOdds < 0 ? odds.homeOdds : `+${odds.homeOdds}`; // Simplified logic, usually we use spread from Odds object, but here we only have probabilities in some versions?
+            // Actually GameOdds has homeOdds / awayOdds which might be probabilities or moneyline.
+            // Let's assume we want to show probability for now or simple spread if available.
+            // Our GameOdds interface has 'awayOdds', 'homeOdds'.
+            // Let's show "52%" probability?
+            const prob = Math.round(Math.max(odds.homeProb, odds.awayProb));
+            const fav = odds.homeProb > odds.awayProb ? home : away;
+            content += ` (${fav} ${prob}%)`;
+        }
     } else {
         content = `${away} ${awayScore}-${homeScore} ${home}`;
+        // Hover Stat: Detailed Status
+        if (isSelected && isLive) {
+            content += ` [${game.gameStatusText}]`;
+        }
     }
 
     // Add live indicator prefix if game is live
@@ -36,6 +58,8 @@ export function createGameMarker(game: Game, isSelected: boolean, isHighlighted:
         return `${livePrefix}[${content}${heatSuffix}]`;
     } else if (isHighlighted) {
         return `${livePrefix}»${content}${heatSuffix}«`;
+    } else if (isCrunchTime) {
+        return `❗ ${content}${heatSuffix}`;
     } else if (isLive) {
         return `●● ${content}${heatSuffix}`;
     } else {
@@ -62,6 +86,7 @@ export interface GameColor {
     isSelected: boolean;
     isHighlighted: boolean;
     heat?: HeatData;
+    isCrunchTime?: boolean;
 }
 
 // Embed game markers into map lines with collision detection
@@ -88,7 +113,17 @@ export function embedGamesInMap(
         // Let's ensure checkGameMatchesFilter is robust (I updated it above to include city/name).
         const isHighlighted = checkGameMatchesFilter(game, searchFilter);
         const heat = heatMap[game.gameId];
-        const marker = createGameMarker(game, isSelected, isHighlighted, undefined, heat);
+
+        // Crunch Time Logic: 4th Qtr or OT, score diff <= 5
+        const isCrunchTime = game.gameStatus === 2 &&
+            game.period >= 4 &&
+            Math.abs(game.homeTeam.score - game.awayTeam.score) <= 5;
+
+        // Pass isCrunchTime to marker builder if we want it in text, 
+        // OR just keep it in GameColor for component level styling.
+        // Let's add a "!" prefix in text if crunch time?
+        const marker = createGameMarker(game, isSelected, isHighlighted, undefined, heat, isCrunchTime);
+
         return {
             game,
             idx,
@@ -98,7 +133,8 @@ export function embedGamesInMap(
             isLive: game.gameStatus === 2,
             isSelected,
             isHighlighted,
-            heat
+            heat,
+            isCrunchTime
         };
     });
 
@@ -107,9 +143,9 @@ export function embedGamesInMap(
     const occupiedRanges = new Map<number, Array<{ start: number; end: number }>>();
 
     for (const gamePos of gamesWithPos) {
-        const { idx, markerLen, isLive, isSelected, isHighlighted, heat } = gamePos;
+        const { idx, markerLen, isLive, isSelected, isHighlighted, heat, isCrunchTime } = gamePos;
         let { row, col } = gamePos;
-        const marker = createGameMarker(gamePos.game, isSelected, isHighlighted, undefined, heat);
+        const marker = createGameMarker(gamePos.game, isSelected, isHighlighted, undefined, heat, isCrunchTime);
 
         col = Math.max(0, Math.min(col, maxWidth - markerLen));
         row = Math.max(0, Math.min(row, maxHeight - 1));
@@ -137,7 +173,7 @@ export function embedGamesInMap(
             const before = line.slice(0, col);
             const after = line.slice(col + markerLen);
             lines[row] = before + marker + after;
-            gameColors.set(idx, { row, col, isLive, isSelected, isHighlighted, heat });
+            gameColors.set(idx, { row, col, isLive, isSelected, isHighlighted, heat, isCrunchTime });
         }
     }
 

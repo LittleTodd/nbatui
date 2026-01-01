@@ -21,7 +21,7 @@ interface MapLineProps {
 }
 
 export function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisible }: MapLineProps) {
-    const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string; heat?: HeatData }> = [];
+    const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string; heat?: HeatData; isCrunchTime?: boolean }> = [];
 
     gameColors.forEach((pos, gameIdx) => {
         if (pos.row === rowIndex) {
@@ -37,7 +37,7 @@ export function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisibl
                 gameOdds = odds[fetchOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
             }
 
-            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds, pos.heat);
+            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds, pos.heat, pos.isCrunchTime);
             markersOnRow.push({
                 col: pos.col,
                 length: marker.length,
@@ -46,7 +46,8 @@ export function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisibl
                 isHighlighted: pos.isHighlighted,
                 gameIdx,
                 content: marker,
-                heat: pos.heat
+                heat: pos.heat,
+                isCrunchTime: pos.isCrunchTime
             });
         }
     });
@@ -110,6 +111,15 @@ export function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisibl
                 if (marker.isSelected) {
                     finalColor = 'cyan';
                 }
+            } else if (marker.isCrunchTime) {
+                // Crunch Time: Flashing Red/Bold
+                if (liveDotVisible) { // Reuse the blinking timer for a blink effect
+                    finalColor = 'white';
+                    finalBg = 'red';
+                } else {
+                    finalColor = 'red';
+                }
+                finalBold = true;
             } else if (marker.isSelected) {
                 finalColor = 'cyan';
                 finalBold = true;

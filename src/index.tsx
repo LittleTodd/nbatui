@@ -11,7 +11,7 @@ import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
 import { getTeamPosition } from './data/teamCoords.js';
 import { GameDetailPage } from './pages/GameDetailPage.js';
 import { StandingsSidebar } from './components/StandingsSidebar.js';
-import { useSocialHeat, type HeatData } from './hooks/useSocialHeat.js';
+import { StandingsSidebar } from './components/StandingsSidebar.js';
 import { HeatIndicator } from './components/HeatIndicator.js';
 
 import { findNearestGame } from './utils/mapNavigation.js';
@@ -36,6 +36,7 @@ function App() {
     const connected = useGameStore(state => state.connected);
     const loading = useGameStore(state => state.loading);
     const odds = useGameStore(state => state.odds);
+    const socialHeat = useGameStore(state => state.socialHeat);
 
     // Store Actions
     const loadGamesForDate = useGameStore(state => state.loadGamesForDate);
@@ -49,9 +50,6 @@ function App() {
     const [searchFilter, setSearchFilter] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [showStandings, setShowStandings] = useState(false);
-
-    // Social Heat Hook
-    const heatMap = useSocialHeat(games, odds);
 
     // Global blinking state for live game indicator
     const [liveDotVisible, setLiveDotVisible] = useState(true);
@@ -183,7 +181,7 @@ function App() {
     const mapLines = getCleanMap().slice(0, mapHeight);
 
     const { lines: mapWithGames, gameColors } = embedGamesInMap(
-        mapLines, games, selectedIndex, Math.min(termWidth - 2, US_MAP_WIDTH), searchFilter, heatMap
+        mapLines, games, selectedIndex, Math.min(termWidth - 2, US_MAP_WIDTH), searchFilter, socialHeat
     );
 
     const dateDisplay = isSameDay(currentDate, new Date()) ? 'TODAY' : format(currentDate, 'yyyy-MM-dd');
@@ -265,7 +263,7 @@ function App() {
                                 gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
                             }
                             // Pass heat to detail
-                            const gameHeat = heatMap[game.gameId];
+                            const gameHeat = socialHeat[game.gameId];
                             return <GameDetail game={game} odds={gameOdds} currentIndex={selectedIndex} totalGames={games.length} heat={gameHeat} />;
                         })()
                     )}

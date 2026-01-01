@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-import { type Game, type GameOdds, fetchTodayGames, fetchGamesByDate, checkHealth, fetchPolymarketOdds, getOddsKey } from '../services/apiClient.js';
+import { type Game, type GameOdds, fetchTodayGames, fetchGamesByDate, checkHealth, fetchPolymarketOdds, getOddsKey, type SocialHeat as HeatData } from '../services/apiClient.js';
 import { format, subDays, isSameDay } from 'date-fns';
 
 interface GameState {
@@ -22,6 +22,10 @@ interface GameState {
     refreshGames: () => Promise<void>;
     moveSelection: (direction: 'up' | 'down') => void;
     changeDate: (direction: 'prev' | 'next') => void;
+
+    // Social Heat
+    socialHeat: Record<string, HeatData>;
+    fetchHeatForGames: () => Promise<void>;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -48,25 +52,29 @@ export const useGameStore = create<GameState>((set, get) => ({
             set({ loading: true });
         }
 
-        const offset = new Date().getTimezoneOffset();
-        let queryDate = date;
-        const isViewingToday = isSameDay(date, new Date());
+        // Precise Calculation: Map "Local Day" to "NBA Day"
+        // We take the Midnight of the selected Local Date, and see what date it is in ET (New York).
+        // This handles all timezones (Asia, Europe, etc.) accurately.
 
-        if (offset <= 0) {
-            queryDate = subDays(date, 1);
-        }
+        // 1. Get timestamp of Local Midnight
+        const localMidnight = new Date(date);
+        localMidnight.setHours(0, 0, 0, 0);
 
-        const dateStr = format(queryDate, 'yyyy-MM-dd');
+        // 2. Format to ET Date String (YYYY-MM-DD)
+        const etDateStr = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/New_York',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(localMidnight);
 
-        // Check if the date is DEEP in the past
+        // Check if the date is DEEP in the past (using local date relative to now)
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const startOfYesterday = subDays(startOfToday, 1);
-        const isPastDate = queryDate.getTime() < startOfYesterday.getTime();
+        const isPastDate = date.getTime() < startOfYesterday.getTime();
 
-        const gamesPromise = isViewingToday
-            ? fetchTodayGames()
-            : fetchGamesByDate(dateStr);
+        const gamesPromise = fetchGamesByDate(etDateStr);
 
         let gamesData: Game[] = [];
         let oddsData: Record<string, GameOdds> = {};
@@ -91,6 +99,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (!isBackgroundRefresh && gamesData.length > 0) {
                 set({ selectedIndex: 0 });
             }
+
+            // Trigger background heat fetch
+            get().fetchHeatForGames();
+
         } catch (error) {
             console.error("Failed to load games:", error);
             set({ loading: false });
@@ -126,5 +138,44 @@ export const useGameStore = create<GameState>((set, get) => ({
         // However, standard pattern is to update state and let React effect handle data fetching?
         // OR we handle it here. Let's start by just setting date, and we'll call loadGamesForDate in a store subscription or component effect.
         set({ currentDate: newDate });
-    }
+    },
+
+    // Heat Map State
+    socialHeat: {},
+
+    setSocialHeat: (heatMap: Record<string, HeatData>) => set({ socialHeat: heatMap }),
+
+    // Fetch heat for all current games (in parallel)
+    fetchHeatForGames: async () => {
+        const { games } = get();
+        if (games.length === 0) return;
+
+        const { fetchGameHeat } = await import('../services/apiClient.js');
+
+        const heatMap: Record<string, HeatData> = {};
+
+        // Use Promise.all to fetch in parallel
+        await Promise.all(games.map(async (game) => {
+            // Skip old games (simple 6 month check here or rely on backend return empty)
+            // Backend handles 6 month check now, returns empty/cold.
+            // But we can skip fetch if we want to save bandwidth.
+            // Let's just fetch, backend is fast with cache.
+            const gameDateStr = game.gameTimeUTC?.slice(0, 10);
+            if (!gameDateStr) return;
+
+            const heat = await fetchGameHeat(
+                game.awayTeam.teamTricode,
+                game.homeTeam.teamTricode,
+                game.gameStatus,
+                gameDateStr
+            );
+
+            if (heat) {
+                // Determine level if not provided by backend (backend provides it)
+                heatMap[game.gameId] = heat;
+            }
+        }));
+
+        set({ socialHeat: heatMap });
+    },
 }));
