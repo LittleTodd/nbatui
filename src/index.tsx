@@ -2,7 +2,7 @@
  * NBA-TUI Main Application
  * Map-centric view with games positioned at city locations
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
 import Spinner from 'ink-spinner';
 import { format, isSameDay } from 'date-fns';
@@ -182,11 +182,11 @@ function App() {
 
     const availableHeight = termHeight - 12 - warningHeight;
     const mapHeight = Math.max(0, Math.min(availableHeight, 25));
-    const mapLines = getCleanMap().slice(0, mapHeight);
+    const mapLines = useMemo(() => getCleanMap().slice(0, mapHeight), [mapHeight]);
 
-    const { lines: mapWithGames, gameColors } = embedGamesInMap(
+    const { lines: mapWithGames, gameColors } = useMemo(() => embedGamesInMap(
         mapLines, games, selectedIndex, Math.min(termWidth - 2, US_MAP_WIDTH), searchFilter, socialHeat
-    );
+    ), [mapLines, games, selectedIndex, termWidth, searchFilter, socialHeat]);
 
     const dateDisplay = isSameDay(currentDate, new Date()) ? 'TODAY' : format(currentDate, 'yyyy-MM-dd');
 
