@@ -176,10 +176,6 @@ function App() {
         warningHeight += 1;
     }
 
-    if (view === 'detail' && games[selectedIndex]) {
-        return <GameDetailPage game={games[selectedIndex]} onBack={() => setView('map')} />;
-    }
-
     const availableHeight = termHeight - 12 - warningHeight;
     const mapHeight = Math.max(0, Math.min(availableHeight, 25));
     const mapLines = useMemo(() => getCleanMap().slice(0, mapHeight), [mapHeight]);
@@ -187,6 +183,10 @@ function App() {
     const { lines: mapWithGames, gameColors } = useMemo(() => embedGamesInMap(
         mapLines, games, selectedIndex, Math.min(termWidth - 2, US_MAP_WIDTH), searchFilter, socialHeat
     ), [mapLines, games, selectedIndex, termWidth, searchFilter, socialHeat]);
+
+    if (view === 'detail' && games[selectedIndex]) {
+        return <GameDetailPage game={games[selectedIndex]} onBack={() => setView('map')} />;
+    }
 
     const dateDisplay = isSameDay(currentDate, new Date()) ? 'TODAY' : format(currentDate, 'yyyy-MM-dd');
 

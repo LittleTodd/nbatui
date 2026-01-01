@@ -105,12 +105,21 @@ def fetch_polymarket_odds() -> Dict:
         # Get the moneyline market (usually the first one with matching title)
         markets = event.get("markets", [])
         moneyline_market = None
+        
+        # Priority 1: Exact match
         for market in markets:
-            q = market.get("question", "")
-            # The moneyline question usually matches the event title
-            if q == title or "vs" in q.lower():
+            if market.get("question", "") == title:
                 moneyline_market = market
                 break
+        
+        # Priority 2: "vs" but not props (fallback)
+        if not moneyline_market:
+            for market in markets:
+                q = market.get("question", "")
+                q_lower = q.lower()
+                if "vs" in q_lower and not any(x in q_lower for x in ["o/u", "spread", "points", "rebounds", "assists", "1h", "1q"]):
+                    moneyline_market = market
+                    break
         
         if not moneyline_market:
             continue
