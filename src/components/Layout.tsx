@@ -31,8 +31,8 @@ export function Footer({ connected, loading, gamesCount, SpinnerComponent }: Foo
                 </Text>
                 {loading && <Text color="yellow"> <SpinnerComponent type="dots" /></Text>}
             </Box>
-            <Text dimColor>{gamesCount} games • ←/→: date | ↑/↓: select | s: standings | Enter: detail</Text>
-            <Text dimColor>r: refresh | q: quit</Text>
+            <Text dimColor>{gamesCount} games • ←/→: date | ↑/↓: select | /: search | s: standings</Text>
+            <Text dimColor>Enter: detail | r: refresh | q: quit</Text>
         </Box>
     );
 }

@@ -82,12 +82,12 @@ function App() {
     useInput((input, key) => {
         if (view === 'detail') return;
 
-        if (key.escape || input === 'q') {
-            exit();
-            return;
-        }
-
         if (isSearching) {
+            if (key.escape) {
+                setIsSearching(false);
+                setSearchFilter('');
+                return;
+            }
             if (key.return) {
                 setIsSearching(false);
                 if (searchFilter) {
@@ -110,6 +110,11 @@ function App() {
             } else if (input.length === 1 && !key.ctrl && !key.meta) {
                 setSearchFilter(prev => prev + input);
             }
+            return;
+        }
+
+        if (key.escape || input === 'q') {
+            exit();
             return;
         }
 
