@@ -3,12 +3,10 @@
 **The ultimate terminal-based NBA command center for hackers and data nerds.**  
 **终极 NBA 命令行观赛中心 - 专为极客打造。**
 
-![NBA-TUI Demo](https://github.com/user-attachments/assets/placeholder.png)
-
 ## ✨ Why is this cool? / 项目亮点
 
 Most sports apps are boring lists. **NBA-TUI** visualizes the league geographically and socially.
-也就是说，绝大多数体育App都是枯燥的列表。**NBA-TUI** 将比赛以地理可视化和社交热度的形式呈现，带给你不一样的上帝视角。
+绝大多数体育App都是枯燥的列表。**NBA-TUI** 将比赛以地理可视化和社交热度的形式呈现，带给你不一样的上帝视角。
 
 ### 🗺️ Interactive Battle Map (互动战图)
 - **Geographic Visualization**: Games are rendered on a terminal-rendered US map at the actual city locations.
@@ -17,8 +15,6 @@ Most sports apps are boring lists. **NBA-TUI** visualizes the league geographica
 - **实时状态光环**: 比赛标记会根据实时状态脉动，并根据**社交热度**（Reddit/Twitter讨论量）发出不同颜色的光芒，“火热”的比赛一目了然。
 
 ### 🧠 Smart & Nerd Stats (硬核数据)
-- **Strict Timezone Logic**: No more "missing games" due to timezone confusion. We calculate the exact Local Midnight vs ET offset to ensure you see the correct games for *your* day.
-- **严格时区逻辑**: 告别因时差导致的“比赛消失”。我们采用精确的本地午夜至东部时间转换逻辑，确保无论你在地球何处，都能看到正确的当日比赛。
 - **Polymarket Odds**: Integrated real-time win probabilities from prediction markets, not just traditional bookies.
 - **Polymarket 赔率**: 集成来自预测市场的实时胜率数据，不仅仅是传统博彩赔率。
 
