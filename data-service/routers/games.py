@@ -82,3 +82,72 @@ def get_game_playbyplay(game_id: str):
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{game_id}/score-curve")
+def get_game_score_curve(game_id: str):
+    """
+    Get simplified scoring progression for charting.
+    Returns an array of points: { time, homeScore, awayScore }
+    Sampled to ~50 points for efficient rendering.
+    """
+    try:
+        data = nba_service.get_playbyplay(game_id)
+        if not data:
+            raise HTTPException(status_code=404, detail="Game not found or no data available")
+        
+        actions = data.get('actions', [])
+        if not actions:
+            return {"points": [], "homeTeam": "", "awayTeam": ""}
+        
+        # Extract scoring events (when score changes)
+        points = []
+        last_home = "0"
+        last_away = "0"
+        
+        for action in actions:
+            home = action.get('scoreHome', '0') or '0'
+            away = action.get('scoreAway', '0') or '0'
+            
+            # Only add when score changes
+            if home != last_home or away != last_away:
+                period = action.get('period', 1)
+                clock = action.get('clock', 'PT12M00.00S')
+                
+                # Parse clock to get minutes remaining
+                try:
+                    minutes = float(clock.replace('PT', '').split('M')[0])
+                except:
+                    minutes = 12.0
+                
+                # Calculate progress (0-100) across all periods
+                # Q1: 0-25, Q2: 25-50, Q3: 50-75, Q4: 75-100
+                period_progress = (12 - minutes) / 12
+                overall_progress = ((period - 1) * 25) + (period_progress * 25)
+                
+                points.append({
+                    "time": round(overall_progress, 1),
+                    "homeScore": int(home),
+                    "awayScore": int(away),
+                    "period": period
+                })
+                
+                last_home = home
+                last_away = away
+        
+        # Sample to max 50 points for performance
+        if len(points) > 50:
+            step = len(points) // 50
+            points = points[::step] + [points[-1]]  # Always include final score
+        
+        return {
+            "points": points,
+            "homeTeam": data.get('homeTeam', {}).get('teamTricode', ''),
+            "awayTeam": data.get('awayTeam', {}).get('teamTricode', '')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+

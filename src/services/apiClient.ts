@@ -224,6 +224,33 @@ export async function fetchPlayByPlay(gameId: string): Promise<any> {
     }
 }
 
+export interface ScoreCurvePoint {
+    time: number;
+    homeScore: number;
+    awayScore: number;
+    period: number;
+}
+
+export interface ScoreCurveData {
+    points: ScoreCurvePoint[];
+    homeTeam: string;
+    awayTeam: string;
+}
+
+export async function fetchScoreCurve(gameId: string): Promise<ScoreCurveData | null> {
+    try {
+        const res = await fetch(`${BASE_URL}/games/${gameId}/score-curve`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as ScoreCurveData;
+    } catch {
+        return null;
+    }
+}
+
+
+
+
+
 export async function fetchStandings(): Promise<any> {
     try {
         const res = await fetch(`${BASE_URL}/games/standings`);

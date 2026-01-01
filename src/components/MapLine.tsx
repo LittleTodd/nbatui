@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Text } from 'ink';
 import type { Game, GameOdds } from '../services/apiClient.js';
@@ -99,21 +98,19 @@ export function MapLine({ line, rowIndex, gameColors, games, odds, liveDotVisibl
                 finalBold = true;
                 finalDim = false;
             } else if (bg) {
-                // Team Color Block - Always prioritize this for the tricode background
+                // Team Color Block
                 finalBg = bg;
-                finalColor = '#ffffff'; // White text on team color
+                finalColor = '#ffffff';
                 finalBold = true;
                 finalDim = false;
             } else if (marker.heat?.level === 'fire' || marker.heat?.level === 'hot') {
-                // Hot games get special text color for scores/info
                 finalColor = marker.heat.level === 'fire' ? 'red' : 'orange';
                 finalBold = true;
                 if (marker.isSelected) {
                     finalColor = 'cyan';
                 }
             } else if (marker.isCrunchTime) {
-                // Crunch Time: Flashing Red/Bold
-                if (liveDotVisible) { // Reuse the blinking timer for a blink effect
+                if (liveDotVisible) {
                     finalColor = 'white';
                     finalBg = 'red';
                 } else {

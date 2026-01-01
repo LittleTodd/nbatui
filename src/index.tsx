@@ -11,7 +11,6 @@ import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
 import { getTeamPosition } from './data/teamCoords.js';
 import { GameDetailPage } from './pages/GameDetailPage.js';
 import { StandingsSidebar } from './components/StandingsSidebar.js';
-import { StandingsSidebar } from './components/StandingsSidebar.js';
 import { HeatIndicator } from './components/HeatIndicator.js';
 
 import { findNearestGame } from './utils/mapNavigation.js';

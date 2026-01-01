@@ -92,9 +92,9 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
             });
         } else {
             // For live/completed games, fetch boxscore
-            fetchBoxScore(game.gameId).then(data => {
+            fetchBoxScore(game.gameId).then((boxData: any) => {
                 if (mounted) {
-                    setBoxScore(data);
+                    setBoxScore(boxData);
                     setLoading(false);
                 }
             });
@@ -151,23 +151,41 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 <Text>Status: {boxScore.gameStatusText}</Text>
             </Box>
 
-            <Box flexDirection="column" marginTop={1}>
-                <Box flexDirection="row" justifyContent="space-around">
-                    <BoxScoreTable teamName={boxScore.awayTeam.teamTricode} players={boxScore.awayTeam.players} />
-                    <BoxScoreTable teamName={boxScore.homeTeam.teamTricode} players={boxScore.homeTeam.players} />
-                </Box>
+            {/* Quarter-by-Quarter Scoring */}
+            <QuarterScoreTable
+                awayTeam={boxScore.awayTeam}
+                homeTeam={boxScore.homeTeam}
+            />
+
+            <Divider />
+
+            <Box flexDirection="row" justifyContent="center">
+                <BoxScoreTable
+                    teamName={boxScore.awayTeam.teamCity}
+                    teamTricode={boxScore.awayTeam.teamTricode}
+                    players={boxScore.awayTeam.players}
+                />
+                <BoxScoreTable
+                    teamName={boxScore.homeTeam.teamCity}
+                    teamTricode={boxScore.homeTeam.teamTricode}
+                    players={boxScore.homeTeam.players}
+                />
             </Box>
+
+            <Divider />
 
             {/* Social Buzz Section */}
             {tweets.length > 0 && (
-                <Box flexDirection="column" marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
-                    <Text bold color="cyan">💬 Social Buzz (r/nba)</Text>
-                    {tweets.slice(0, 3).map((t, i) => (
-                        <Box key={i} flexDirection="column" marginTop={1}>
-                            <Text dimColor>@{t.user} • {t.likes} pts</Text>
-                            <Text>"{t.text}"</Text>
-                        </Box>
-                    ))}
+                <Box flexDirection="column" marginTop={1} paddingX={1} borderStyle="round" borderColor="gray">
+                    <Text bold color="#ffcc00">💬 Social Buzz (r/nba)</Text>
+                    <Box flexDirection="column" marginTop={1}>
+                        {tweets.slice(0, 3).map((t, i) => (
+                            <Box key={i} flexDirection="column" marginBottom={1}>
+                                <Text dimColor>@{t.user} <Text color="green">^ {t.likes}</Text></Text>
+                                <Text italic color="white">"{t.text}"</Text>
+                            </Box>
+                        ))}
+                    </Box>
                 </Box>
             )}
 
@@ -329,7 +347,13 @@ function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game
     );
 }
 
-const BoxScoreTable = ({ teamName, players }: { teamName: string, players: any[] }) => {
+const Divider = () => (
+    <Box marginY={1} width="100%" justifyContent="center">
+        <Text dimColor>──────────────────────────────────────────────────</Text>
+    </Box>
+);
+
+const BoxScoreTable = ({ teamName, teamTricode, players }: { teamName: string, teamTricode: string, players: any[] }) => {
     // Sort active players by points
     const activePlayers = players
         ? players
@@ -338,38 +362,40 @@ const BoxScoreTable = ({ teamName, players }: { teamName: string, players: any[]
             .slice(0, 5)
         : [];
 
+    const teamBg = TEAM_BG_COLORS[teamTricode] || '#333';
+
     return (
-        <Box flexDirection="column" marginRight={2}>
-            <Text bold underline>{teamName} Top Performers</Text>
-            <Box flexDirection="column" marginTop={1}>
-                <Box borderStyle="single" borderBottom={false} borderTop={false} borderLeft={false} borderRight={false}>
-                    <Box width={22}><Text dimColor>PLAYER</Text></Box>
-                    <Box width={5}><Text dimColor>PTS</Text></Box>
-                    <Box width={5}><Text dimColor>REB</Text></Box>
-                    <Box width={5}><Text dimColor>AST</Text></Box>
+        <Box flexDirection="column" marginRight={2} borderStyle="round" borderColor={teamBg} padding={1}>
+            {/* Header with Team Color Background */}
+            <Box marginBottom={1}>
+                <Text bold backgroundColor={teamBg} color="#ffffff"> {teamName} </Text>
+                <Text bold> TOP PERFORMERS</Text>
+            </Box>
+
+            <Box flexDirection="column">
+                {/* Table Header */}
+                <Box borderStyle="single" borderBottom={true} borderTop={false} borderLeft={false} borderRight={false} borderColor="gray" marginBottom={1}>
+                    <Box width={18}><Text dimColor>PLAYER</Text></Box>
+                    <Box width={6} justifyContent="flex-end"><Text dimColor>PTS</Text></Box>
+                    <Box width={6} justifyContent="flex-end"><Text dimColor>REB</Text></Box>
+                    <Box width={6} justifyContent="flex-end"><Text dimColor>AST</Text></Box>
                 </Box>
+
+                {/* Rows */}
                 {activePlayers.map((p: any) => {
-                    // Smart name formatting: keep first initial + reasonable last name
+                    // Smart name formatting
                     let displayName = p.nameI || '';
-                    if (displayName.length > 20) {
-                        // Try to shorten hyphenated names (e.g., "Gilgeous-Alexander" -> "Gilgeous-Alex")
+                    if (displayName.length > 18) {
                         const parts = displayName.split(' ');
-                        if (parts.length >= 2) {
-                            const firstName = parts[0];
-                            let lastName = parts.slice(1).join(' ');
-                            if (lastName.length > 16) {
-                                // Keep first 14 chars of last name
-                                lastName = lastName.slice(0, 14);
-                            }
-                            displayName = `${firstName} ${lastName}`;
-                        }
+                        displayName = parts[0].charAt(0) + '. ' + parts.slice(1).join(' ');
+                        if (displayName.length > 18) displayName = displayName.slice(0, 16) + '..';
                     }
                     return (
-                        <Box key={p.personId}>
-                            <Box width={22}><Text>{displayName}</Text></Box>
-                            <Box width={5}><Text>{p.statistics.points}</Text></Box>
-                            <Box width={5}><Text>{p.statistics.reboundsTotal}</Text></Box>
-                            <Box width={5}><Text>{p.statistics.assists}</Text></Box>
+                        <Box key={p.personId} marginBottom={0}>
+                            <Box width={18}><Text color="white" bold>{displayName}</Text></Box>
+                            <Box width={6} justifyContent="flex-end"><Text bold color="cyan">{p.statistics.points}</Text></Box>
+                            <Box width={6} justifyContent="flex-end"><Text dimColor>{p.statistics.reboundsTotal}</Text></Box>
+                            <Box width={6} justifyContent="flex-end"><Text dimColor>{p.statistics.assists}</Text></Box>
                         </Box>
                     );
                 })}
@@ -377,3 +403,97 @@ const BoxScoreTable = ({ teamName, players }: { teamName: string, players: any[]
         </Box>
     );
 };
+
+// Quarter-by-Quarter Scoring Table
+interface Period {
+    period: number;
+    periodType: string;
+    score: number;
+}
+
+interface TeamWithPeriods {
+    teamTricode: string;
+    score: number;
+    periods?: Period[];
+}
+
+const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; homeTeam: TeamWithPeriods }) => {
+    const awayPeriods = awayTeam.periods || [];
+    const homePeriods = homeTeam.periods || [];
+
+    // Determine max periods (handles OT)
+    const maxPeriods = Math.max(awayPeriods.length, homePeriods.length, 4);
+
+    // Get period labels
+    const getPeriodLabel = (idx: number) => {
+        if (idx < 4) return `Q${idx + 1}`;
+        return `OT${idx - 3}`;
+    };
+
+    // Get score for a period (0 if not available)
+    const getScore = (periods: Period[], idx: number) => {
+        const period = periods.find(p => p.period === idx + 1);
+        return period?.score ?? '-';
+    };
+
+    const awayBg = TEAM_BG_COLORS[awayTeam.teamTricode] || '#333';
+    const homeBg = TEAM_BG_COLORS[homeTeam.teamTricode] || '#333';
+
+    return (
+        <Box flexDirection="column" marginY={1} borderStyle="single" borderColor="gray" paddingX={1}>
+            <Text bold color="cyan">📊 Scoring by Quarter</Text>
+            <Box flexDirection="column" marginTop={1}>
+                {/* Header Row */}
+                <Box marginBottom={1}>
+                    <Box width={7}><Text dimColor>TEAM</Text></Box>
+                    {Array.from({ length: maxPeriods }, (_, i) => (
+                        <Box key={i} width={6} justifyContent="center">
+                            <Text dimColor>{getPeriodLabel(i)}</Text>
+                        </Box>
+                    ))}
+                    <Box width={7} justifyContent="center">
+                        <Text dimColor bold>TOTAL</Text>
+                    </Box>
+                </Box>
+
+                {/* Away Team Row */}
+                <Box>
+                    <Box width={7}>
+                        <Text bold backgroundColor={awayBg} color="#ffffff"> {awayTeam.teamTricode} </Text>
+                    </Box>
+                    {Array.from({ length: maxPeriods }, (_, i) => (
+                        <Box key={i} width={6} justifyContent="center">
+                            <Text color="white">{getScore(awayPeriods, i)}</Text>
+                        </Box>
+                    ))}
+                    <Box width={7} justifyContent="center">
+                        <Text bold color={awayTeam.score > homeTeam.score ? 'green' : 'white'}>
+                            {awayTeam.score}
+                        </Text>
+                    </Box>
+                </Box>
+
+                {/* Home Team Row */}
+                <Box>
+                    <Box width={7}>
+                        <Text bold backgroundColor={homeBg} color="#ffffff"> {homeTeam.teamTricode} </Text>
+                    </Box>
+                    {Array.from({ length: maxPeriods }, (_, i) => (
+                        <Box key={i} width={6} justifyContent="center">
+                            <Text color="white">{getScore(homePeriods, i)}</Text>
+                        </Box>
+                    ))}
+                    <Box width={7} justifyContent="center">
+                        <Text bold color={homeTeam.score > awayTeam.score ? 'green' : 'white'}>
+                            {homeTeam.score}
+                        </Text>
+                    </Box>
+                </Box>
+            </Box>
+        </Box>
+    );
+};
+
+
+
+
