@@ -242,18 +242,21 @@ function App() {
                     )}
 
                     {isSearching ? (
-                        <Box
-                            borderStyle="round"
-                            borderColor="yellow"
-                            paddingX={2}
-                            marginTop={1}
-                            alignSelf="center"
-                            width={40}
-                            flexDirection="row"
-                        >
-                            <Text>Search: </Text>
-                            <Text color="white">{searchFilter}</Text>
-                            <Text color="yellow">█</Text>
+                        <Box flexDirection="column" marginTop={1} alignSelf="center">
+                            <Box
+                                borderStyle="round"
+                                borderColor="yellow"
+                                paddingX={2}
+                                width={40}
+                                flexDirection="row"
+                            >
+                                <Text>Search: </Text>
+                                <Text color="white">{searchFilter}</Text>
+                                <Text color="yellow">█</Text>
+                            </Box>
+                            <Box justifyContent="center" marginTop={0}>
+                                <Text dimColor>Enter to select • Esc to cancel</Text>
+                            </Box>
                         </Box>
                     ) : (
                         games.length > 0 && games[selectedIndex] && (() => {

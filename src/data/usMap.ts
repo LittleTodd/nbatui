@@ -47,28 +47,20 @@ export const usMapLines: string[] = [
     "                                                                                                    ",
 ];
 
+// Pre-compute the clean map lines once at module load to avoid expensive regex on every render
+const CLEAN_MAP_LINES = usMapLines.map(line => {
+    // Single regex to replace all state abbreviations (much faster than 48 individual replaces)
+    return line
+        .replace(/\b(WA|OR|CA|NV|ID|MT|WY|UT|AZ|CO|NM|ND|SD|NE|KS|OK|TX|MN|IA|MO|AR|LA|WI|IL|IN|MI|OH|KY|TN|MS|AL|GA|FL|SC|NC|VA|WV|MD|DE|NJ|PA|NY|CT|RI|MA|VT|NH|ME)\b/g, '  ')
+        .replace(/prior/g, '     ');
+});
+
 /**
  * Get a clean version of the map for rendering
- * Replaces state abbreviations with spaces for cleaner look
+ * Returns pre-computed result for optimal performance
  */
 export function getCleanMap(): string[] {
-    const stateAbbrevs = [
-        'WA', 'OR', 'CA', 'NV', 'ID', 'MT', 'WY', 'UT', 'AZ', 'CO', 'NM',
-        'ND', 'SD', 'NE', 'KS', 'OK', 'TX', 'MN', 'IA', 'MO', 'AR', 'LA',
-        'WI', 'IL', 'IN', 'MI', 'OH', 'KY', 'TN', 'MS', 'AL', 'GA', 'FL',
-        'SC', 'NC', 'VA', 'WV', 'MD', 'DE', 'NJ', 'PA', 'NY', 'CT', 'RI',
-        'MA', 'VT', 'NH', 'ME'
-    ];
-
-    return usMapLines.map(line => {
-        let cleaned = line;
-        stateAbbrevs.forEach(abbrev => {
-            cleaned = cleaned.replace(new RegExp(`\\b${abbrev}\\b`, 'g'), '  ');
-        });
-        // Also clean up "prior" placeholders
-        cleaned = cleaned.replace(/prior/g, '     ');
-        return cleaned;
-    });
+    return CLEAN_MAP_LINES;
 }
 
 /**

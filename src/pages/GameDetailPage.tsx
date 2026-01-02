@@ -462,7 +462,7 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
                             <Text dimColor>{getPeriodLabel(i)}</Text>
                         </Box>
                     ))}
-                    <Box width={7} justifyContent="center">
+                    <Box width={7} justifyContent="flex-end">
                         <Text dimColor bold>TOTAL</Text>
                     </Box>
                 </Box>
@@ -477,7 +477,7 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
                             <Text color="white">{getScore(awayPeriods, i)}</Text>
                         </Box>
                     ))}
-                    <Box width={7} justifyContent="center">
+                    <Box width={7} justifyContent="flex-end">
                         <Text bold color={awayTeam.score > homeTeam.score ? 'green' : 'white'}>
                             {awayTeam.score}
                         </Text>
@@ -494,7 +494,7 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
                             <Text color="white">{getScore(homePeriods, i)}</Text>
                         </Box>
                     ))}
-                    <Box width={7} justifyContent="center">
+                    <Box width={7} justifyContent="flex-end">
                         <Text bold color={homeTeam.score > awayTeam.score ? 'green' : 'white'}>
                             {homeTeam.score}
                         </Text>

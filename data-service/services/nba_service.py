@@ -178,12 +178,77 @@ class NBAService:
 
             # Cache the results if all games are completed
             games_list = list(games_map.values())
+            
+            # HYBRID APPROACH: If any game is LIVE (gameStatus=2), use Live API for real-time scores
+            has_live_games = any(g['gameStatus'] == 2 for g in games_list)
+            if has_live_games:
+                try:
+                    games_list = self._merge_live_scores(games_list)
+                except Exception:
+                    pass  # If Live API fails, keep Stats API data
+            
             cache_service.cache_games(date_str, games_list)
             
             return games_list
         except Exception:
             # Silently fail
             return []
+    
+    def _merge_live_scores(self, games_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Merge real-time scores from Live API for games that are in progress.
+        Only updates games with gameStatus=2.
+        """
+        # Fetch Live API scoreboard
+        live_board = scoreboard.ScoreBoard()
+        live_data = live_board.get_dict()
+        
+        if 'scoreboard' not in live_data or 'games' not in live_data['scoreboard']:
+            return games_list
+        
+        live_games = live_data['scoreboard']['games']
+        
+        # Build lookup by gameId
+        live_lookup = {}
+        for lg in live_games:
+            live_lookup[lg['gameId']] = lg
+        
+        # Merge live data into our games list
+        for game in games_list:
+            game_id = game['gameId']
+            if game_id in live_lookup:
+                lg = live_lookup[game_id]
+                
+                # Update scores
+                game['homeTeam']['score'] = lg.get('homeTeam', {}).get('score', game['homeTeam']['score'])
+                game['awayTeam']['score'] = lg.get('awayTeam', {}).get('score', game['awayTeam']['score'])
+                
+                # Update status
+                game['gameStatus'] = lg.get('gameStatus', game['gameStatus'])
+                game['gameStatusText'] = lg.get('gameStatusText', game['gameStatusText'])
+                
+                # Update period and clock (for live games)
+                game['period'] = lg.get('period', 0)
+                raw_clock = lg.get('gameClock', '')
+                game['gameClock'] = self._parse_game_clock(raw_clock)
+        
+        return games_list
+    
+    def _parse_game_clock(self, iso_clock: str) -> str:
+        """
+        Parse ISO 8601 duration format (PT06M58.00S) to human readable (6:58).
+        """
+        if not iso_clock or not iso_clock.startswith('PT'):
+            return iso_clock
+        
+        import re
+        # Match pattern like PT06M58.00S or PT12M00.00S
+        match = re.match(r'PT(\d+)M([\d.]+)S', iso_clock)
+        if match:
+            minutes = int(match.group(1))
+            seconds = int(float(match.group(2)))
+            return f"{minutes}:{seconds:02d}"
+        return iso_clock
     
     def _get_team_info(self, team_id: int) -> dict:
         all_teams = self.get_all_teams()
