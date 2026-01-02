@@ -56,8 +56,8 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
         if (!skipSocial) {
             Promise.all([
-                fetchGameHeat(team1, team2, game.gameStatus, gameDateStr),
-                fetchGameTweets(team1, team2, game.gameStatus, gameDateStr)
+                fetchGameHeat(team1, team2, game.gameStatus, gameDateStr, game.gameId),
+                fetchGameTweets(team1, team2, game.gameStatus, gameDateStr, game.gameId)
             ]).then(([heatData, tweetsData]) => {
                 if (mounted) {
                     setSocialHeat(heatData);

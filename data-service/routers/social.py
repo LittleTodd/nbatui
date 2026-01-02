@@ -16,6 +16,7 @@ reddit_service = RedditService()
 # Key: {game_key}_{type} -> {data: ..., timestamp: ...}
 _mem_cache = {}
 CACHE_TTL = 300  # 5 minutes
+PERMANENT_CACHE_DELAY_HOURS = 2  # Wait 2 hours after game ends before permanent cache
 
 def get_from_mem_cache(key: str):
     if key in _mem_cache:
@@ -35,11 +36,12 @@ def get_game_heat(
     team1: str, 
     team2: str, 
     status: Optional[int] = Query(None), 
-    date: Optional[str] = Query(None)
+    date: Optional[str] = Query(None),
+    game_id: Optional[str] = Query(None)
 ):
     """
     Get social media heat.
-    - If game is FINAL (status=3), try to load from persistent DB or save to DB.
+    - If game is FINAL (status=3) and 2+ hours have passed, use persistent cache.
     - Else use in-memory cache.
     """
     # 1. Check Persistent Cache for Final Games
@@ -98,9 +100,16 @@ def get_game_heat(
     # 5. Save Logic
     set_mem_cache(mem_key, result)
     
-    # If Final, Archive it persistently
-    if status == 3 and date:
-        cache_service.cache_social(db_key, result)
+    # If Final, record end time and check if 2+ hours have passed
+    if status == 3 and game_id:
+        # Record end time (only records once)
+        cache_service.record_game_end_time(game_id)
+        
+        # Check if 2+ hours have passed since game ended
+        end_time = cache_service.get_game_end_time(game_id)
+        if end_time and datetime.now() > end_time + timedelta(hours=PERMANENT_CACHE_DELAY_HOURS):
+            if date:
+                cache_service.cache_social(db_key, result)
 
     return result
 
@@ -111,7 +120,8 @@ def get_game_tweets(
     team2: str, 
     limit: int = 5,
     status: Optional[int] = Query(None),
-    date: Optional[str] = Query(None)
+    date: Optional[str] = Query(None),
+    game_id: Optional[str] = Query(None)
 ):
     """
     Get top comments.
@@ -156,9 +166,16 @@ def get_game_tweets(
         
     result = {"tweets": formatted_comments}
     
-    # 5. CACHE
+    # 5. CACHE - Record end time and only cache after 2+ hours
     set_mem_cache(mem_key, result)
-    if status == 3 and date:
-        cache_service.cache_social(db_key, result)
+    if status == 3 and game_id:
+        # Record end time (only records once)
+        cache_service.record_game_end_time(game_id)
+        
+        # Check if 2+ hours have passed since game ended
+        end_time = cache_service.get_game_end_time(game_id)
+        if end_time and datetime.now() > end_time + timedelta(hours=PERMANENT_CACHE_DELAY_HOURS):
+            if date:
+                cache_service.cache_social(db_key, result)
         
     return result

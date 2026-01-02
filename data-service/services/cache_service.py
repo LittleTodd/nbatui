@@ -36,6 +36,12 @@ def _get_connection() -> sqlite3.Connection:
             cached_at TEXT NOT NULL
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS game_end_times (
+            game_id TEXT PRIMARY KEY,
+            end_time TEXT NOT NULL
+        )
+    ''')
     conn.commit()
     return conn
 
@@ -202,3 +208,47 @@ def get_cache_stats() -> Dict[str, int]:
         }
     except Exception:
         return {"cached_dates": 0, "cached_boxscores": 0}
+
+
+def record_game_end_time(game_id: str) -> None:
+    """
+    Record the time when a game transitions to status=3 (Final).
+    Only records if not already recorded.
+    """
+    try:
+        conn = _get_connection()
+        # Only insert if not exists
+        cursor = conn.execute(
+            'SELECT end_time FROM game_end_times WHERE game_id = ?',
+            (game_id,)
+        )
+        if cursor.fetchone() is None:
+            conn.execute(
+                'INSERT INTO game_end_times (game_id, end_time) VALUES (?, ?)',
+                (game_id, datetime.now().isoformat())
+            )
+            conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def get_game_end_time(game_id: str) -> Optional[datetime]:
+    """
+    Get the recorded end time for a game.
+    Returns None if not recorded.
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT end_time FROM game_end_times WHERE game_id = ?',
+            (game_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return datetime.fromisoformat(row[0])
+        return None
+    except Exception:
+        return None

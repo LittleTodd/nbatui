@@ -1,80 +1,122 @@
-# 🏀 NBA-TUI (Battle Map)
+# 🏀 NBA-TUI
 
-**The ultimate terminal-based NBA command center for hackers and data nerds.**  
-**终极 NBA 命令行观赛中心 - 专为极客打造。**
+终端 NBA 观赛工具 | Terminal-based NBA viewer
 
-## ✨ Why is this cool? / 项目亮点
-
-Most sports apps are boring lists. **NBA-TUI** visualizes the league geographically and socially.
-绝大多数体育App都是枯燥的列表。**NBA-TUI** 将比赛以地理可视化和社交热度的形式呈现，带给你不一样的上帝视角。
-
-### 🗺️ Interactive Battle Map (互动战图)
-- **Geographic Visualization**: Games are rendered on a terminal-rendered US map at the actual city locations.
-- **地理可视化**: 比赛被渲染在终端绘制的美国地图上，精确对应球队城市位置。
-- **Live Status Aura**: Markers pulse for live games and glow based on **Social Heat** (Reddit/Twitter buzz).
-- **实时状态光环**: 比赛标记会根据实时状态脉动，并根据**社交热度**（Reddit/Twitter讨论量）发出不同颜色的光芒，“火热”的比赛一目了然。
-
-### 🧠 Smart & Nerd Stats (硬核数据)
-- **Polymarket Odds**: Integrated real-time win probabilities from prediction markets, not just traditional bookies.
-- **Polymarket 赔率**: 集成来自预测市场的实时胜率数据，不仅仅是传统博彩赔率。
-
-### 🚨 Clutch Alerts (关键时刻预警)
-- **Crunch Time Mode**: If a game is in the 4th Quarter with a score difference of ≤5, the map marker flashes red to demand your attention.
-- **关键时刻模式**: 当比赛进入第四节且分差≤5分时，地图标记会闪烁红色警报，提醒你立即关注。
+![Terminal](https://img.shields.io/badge/Terminal-TUI-green) ![React](https://img.shields.io/badge/React-Ink-blue) ![Python](https://img.shields.io/badge/Python-FastAPI-yellow)
 
 ---
 
-## 🚀 Quick Start / 快速开始
+## 功能 | Features
 
-We provide a one-click script to set up both the Python Backend (Data Service) and the Node/Bun Frontend.
-我们提供了一键脚本来配置 Python 后端（数据服务）和 Node/Bun 前端。
+### 地图视图 | Map View
+- 比赛按实际城市位置显示在 ASCII 美国地图上
+- Games displayed on ASCII US map at actual city locations
+- 进行中的比赛显示绿色闪烁标记
+- Live games show blinking green indicator
+- 支持日期切换浏览历史和未来赛程
+- Navigate between dates for past/future schedules
 
-### Prerequisites / 前置要求
-- **Python 3.9+**
-- **Bun** (or Node.js) - *The script will offer to install Bun if missing.*
+### 比赛详情 | Game Detail
+- 按节得分表 (Scoring by Quarter)
+- 球队数据对比 (Team Stats Comparison)
+- Top 10 球员表现 (Top 10 Performers)
+- Reddit r/nba 热门评论 (Social Buzz from r/nba)
 
-### Installation / 安装
+### 数据源 | Data Sources
+- NBA 官方 API (实时比分、球员统计)
+- NBA Official API (live scores, player stats)
+- Reddit r/nba (社交热度、评论)
+- Reddit r/nba (social heat, comments)
+- Polymarket (预测市场赔率)
+- Polymarket (prediction market odds)
+
+---
+
+## 安装 | Installation
+
+### 前置要求 | Prerequisites
+- Python 3.9+
+- Bun (或 Node.js)
+
+### 安装步骤 | Steps
 
 ```bash
-# 1. Clone the repo
+# 克隆仓库 | Clone repo
 git clone https://github.com/yourusername/nba-tui.git
 cd nba-tui
 
-# 2. Run Setup Script (Installs dependencies for Python & Bun)
-# 2. 运行安装脚本 (自动安装 Python 和 Bun 依赖)
+# 运行安装脚本 | Run setup script
 chmod +x setup.sh
 ./setup.sh
 ```
 
-### Usage / 使用
+---
+
+## 启动 | Usage
 
 ```bash
-# Run the app (Launches Backend & Frontend)
-# 启动应用 (同时启动后端和前端)
+# 启动应用 | Start app
 ./start.sh
 ```
 
 ---
 
-## 🎮 Controls / 操作指南
+## 操作 | Controls
 
-| Key / 按键 | Action / 动作 |
-| :--- | :--- |
-| **← / →** | Change Date (Previous/Next Day) <br> 切换日期 (前一天/后一天) |
-| **↑ / ↓** | Select Game (Navigate the map) <br> 选择比赛 (在地图上导航) |
-| **Enter** | View Game Details (Boxscore, Play-by-Play) <br> 查看比赛详情 (数据统计, 文字直播) |
-| **/** | Search (Filter games by team/city) <br> 搜索 (按球队/城市过滤) |
-| **s** | Toggle Standings Sidebar <br> 切换积分榜侧边栏 |
-| **r** | Force Refresh <br> 强制刷新 |
-| **q / Esc** | Quit <br> 退出 |
+| 按键 Key | 功能 Action |
+|----------|-------------|
+| `← / →` | 切换日期 Change date |
+| `↑ / ↓` | 选择比赛 Select game |
+| `Enter` | 查看详情 View detail |
+| `/` | 搜索球队 Search team |
+| `s` | 切换积分榜 Toggle standings |
+| `r` | 刷新数据 Refresh |
+| `q / Esc` | 退出 Quit |
 
 ---
 
-## 🛠️ Architecture / 架构
+## 技术栈 | Tech Stack
 
-- **Frontend**: React + Ink (Terminal UI), Zustand (State), Bun.
-- **Backend**: Python FastAPI, SQLite (Caching), NBA API, Reddit/Twitter Scrapers.
-- **Design**: "Perplexity-style" clean aesthetic for local management tools.
+| 组件 Component | 技术 Technology |
+|----------------|-----------------|
+| 前端 Frontend | React + Ink, Zustand, Bun |
+| 后端 Backend | Python FastAPI |
+| 缓存 Cache | SQLite |
+| 数据 Data | nba_api, Reddit API |
 
-Enjoy the game. 🏀
-享受比赛。
+---
+
+## 项目结构 | Structure
+
+```
+nba-tui/
+├── src/                    # 前端 React/Ink 代码
+│   ├── components/         # UI 组件
+│   ├── pages/              # 页面 (Map, Detail)
+│   ├── store/              # Zustand 状态管理
+│   └── services/           # API 客户端
+├── data-service/           # Python 后端
+│   ├── main.py             # FastAPI 入口
+│   ├── services/           # NBA/Reddit 服务
+│   ├── routers/            # API 路由
+│   └── cache.db            # SQLite 缓存
+├── setup.sh                # 安装脚本
+└── start.sh                # 启动脚本
+```
+
+---
+
+## 缓存策略 | Caching
+
+- 已结束比赛的 boxscore 永久缓存
+- Completed game boxscores are cached permanently
+- Social 数据在比赛结束 2 小时后缓存
+- Social data cached 2 hours after game ends
+- 进行中比赛使用 Live API 获取实时比分
+- Live games use Live API for real-time scores
+
+---
+
+## License
+
+MIT

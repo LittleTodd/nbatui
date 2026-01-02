@@ -338,12 +338,13 @@ export interface TweetsResponse {
 }
 
 
-export async function fetchGameHeat(team1: string, team2: string, status?: number, date?: string): Promise<SocialHeat | null> {
+export async function fetchGameHeat(team1: string, team2: string, status?: number, date?: string, gameId?: string): Promise<SocialHeat | null> {
     try {
         let url = `${BASE_URL}/social/heat/${team1}/${team2}`;
         const params = new URLSearchParams();
         if (status) params.append('status', status.toString());
         if (date) params.append('date', date);
+        if (gameId) params.append('game_id', gameId);
 
         if (params.size > 0) url += `?${params.toString()}`;
 
@@ -358,12 +359,13 @@ export async function fetchGameHeat(team1: string, team2: string, status?: numbe
 /**
  * Fetch top tweets/comments for a game
  */
-export async function fetchGameTweets(team1: string, team2: string, status?: number, date?: string): Promise<Tweet[]> {
+export async function fetchGameTweets(team1: string, team2: string, status?: number, date?: string, gameId?: string): Promise<Tweet[]> {
     try {
         let url = `${BASE_URL}/social/tweets/${team1}/${team2}`;
         const params = new URLSearchParams();
         if (status) params.append('status', status.toString());
         if (date) params.append('date', date);
+        if (gameId) params.append('game_id', gameId);
 
         if (params.size > 0) url += `?${params.toString()}`;
 

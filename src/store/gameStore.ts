@@ -167,7 +167,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 game.awayTeam.teamTricode,
                 game.homeTeam.teamTricode,
                 game.gameStatus,
-                gameDateStr
+                gameDateStr,
+                game.gameId
             );
 
             if (heat) {
