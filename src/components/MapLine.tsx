@@ -3,17 +3,13 @@ import { Text } from 'ink';
 import type { Game, GameOdds } from '../services/apiClient.js';
 import type { HeatData } from '../hooks/useSocialHeat.js';
 import { TEAM_BG_COLORS } from '../data/teamColors.js';
-import { createGameMarker } from '../utils/mapRendering.js';
+import { createGameMarker, type GameColor } from '../utils/mapRendering.js';
 import { getOddsKey as fetchOddsKey } from '../services/apiClient.js';
-
-
-// Actually let's just use the one from apiClient if it exists, or duplicate/move it.
-// To avoid circular deps or confusion, let's assume it is exported from apiClient as before.
 
 interface MapLineProps {
     line: string;
     rowIndex: number;
-    gameColors: Map<number, import('../utils/mapRendering.js').GameColor>;
+    gameColors: Map<number, GameColor>;
     games: Game[];
     odds: Record<string, GameOdds>;
     liveDotVisible: boolean;
@@ -186,29 +182,78 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
 }
 
 export const MapLine = memo(MapLineComponent, (prev, next) => {
-    // If props that affect content directly change, re-render
+    // 1. Structural/Data Props that definitely require re-render if changed
+    if (prev.rowIndex !== next.rowIndex) return false;
     if (prev.line !== next.line) return false;
     if (prev.games !== next.games) return false;
-    if (prev.odds !== next.odds) return false;
-    if (prev.rowIndex !== next.rowIndex) return false;
-    // Note: gameColors is a Map, so strict equality might be tricky if it's recreated.
-    // However, we plan to memoize gameColors in parent.
-    if (prev.gameColors !== next.gameColors) return false;
 
-    // If only liveDotVisible changed, check if we need to update
-    if (prev.liveDotVisible !== next.liveDotVisible) {
-        // Check if any game on this row is live or crunch time
-        // We iterate gameColors values
-        let needsUpdate = false;
-        for (const color of next.gameColors.values()) {
-            if (color.row === next.rowIndex) {
-                if (color.isLive || color.isCrunchTime) {
-                    needsUpdate = true;
+    // 2. Identify games on this row for detailed checking
+    // We check if relevant GameColors changed
+    let gameColorsChanged = false;
+
+    if (prev.gameColors !== next.gameColors) {
+        // Optimization: Instead of blindly re-rendering, check if games ON THIS ROW changed status.
+        // If the map reference changed (which it does every embedGamesInMap call),
+        // we must check if the subset of data for THIS row is different.
+
+        const prevRowColors = new Map<number, GameColor>();
+        for (const [idx, color] of prev.gameColors.entries()) {
+            if (color.row === prev.rowIndex) prevRowColors.set(idx, color);
+        }
+
+        const nextRowColors = new Map<number, GameColor>();
+        for (const [idx, color] of next.gameColors.entries()) {
+            if (color.row === next.rowIndex) nextRowColors.set(idx, color);
+        }
+
+        if (prevRowColors.size !== nextRowColors.size) {
+            gameColorsChanged = true;
+        } else {
+            for (const [idx, nextColor] of nextRowColors.entries()) {
+                const prevColor = prevRowColors.get(idx);
+                if (!prevColor) {
+                    gameColorsChanged = true;
+                    break;
+                }
+
+                // Check all visual properties
+                if (prevColor.col !== nextColor.col ||
+                    prevColor.isLive !== nextColor.isLive ||
+                    prevColor.isSelected !== nextColor.isSelected ||
+                    prevColor.isHighlighted !== nextColor.isHighlighted ||
+                    prevColor.isCrunchTime !== nextColor.isCrunchTime ||
+                    prevColor.heat?.level !== nextColor.heat?.level) {
+                    gameColorsChanged = true;
                     break;
                 }
             }
         }
-        return !needsUpdate; // if needsUpdate is true, return false (re-render)
+    }
+
+    if (gameColorsChanged) return false;
+
+    // 3. Odds Check - Only matters if a game on this row is selected
+    if (prev.odds !== next.odds) {
+        let hasSelectedGame = false;
+        for (const color of next.gameColors.values()) {
+            if (color.row === next.rowIndex && color.isSelected) {
+                hasSelectedGame = true;
+                break;
+            }
+        }
+        if (hasSelectedGame) return false;
+    }
+
+    // 4. Live Dot Check - Only matters if a game on this row is live
+    if (prev.liveDotVisible !== next.liveDotVisible) {
+        let hasLiveGame = false;
+        for (const color of next.gameColors.values()) {
+            if (color.row === next.rowIndex && (color.isLive || color.isCrunchTime)) {
+                hasLiveGame = true;
+                break;
+            }
+        }
+        if (hasLiveGame) return false;
     }
 
     return true;
