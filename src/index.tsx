@@ -15,7 +15,7 @@ import { HeatIndicator } from './components/HeatIndicator.js';
 
 import { findNearestGame } from './utils/mapNavigation.js';
 
-import { embedGamesInMap } from './utils/mapRendering.js';
+import { embedGamesInMap, checkGameMatchesFilter } from './utils/mapRendering.js';
 import { MapLine } from './components/MapLine.js';
 
 import { GameDetail } from './components/GameDetail.js';
@@ -89,21 +89,16 @@ function App() {
                 return;
             }
             if (key.return) {
-                setIsSearching(false);
                 if (searchFilter) {
-                    const filter = searchFilter.toLowerCase();
-                    const foundIdx = games.findIndex(g =>
-                        g.homeTeam.teamTricode.toLowerCase().includes(filter) ||
-                        g.homeTeam.teamCity.toLowerCase().includes(filter) ||
-                        g.homeTeam.teamName.toLowerCase().includes(filter) ||
-                        g.awayTeam.teamTricode.toLowerCase().includes(filter) ||
-                        g.awayTeam.teamCity.toLowerCase().includes(filter) ||
-                        g.awayTeam.teamName.toLowerCase().includes(filter)
-                    );
+                    const foundIdx = games.findIndex(g => checkGameMatchesFilter(g, searchFilter));
                     if (foundIdx !== -1) {
+                        setIsSearching(false);
                         setSelectedIndex(foundIdx);
                         if (games.length > 0) setView('detail');
                     }
+                    // Keep searching active if no match found? No, better to give feedback in UI.
+                } else {
+                    setIsSearching(false);
                 }
             } else if (key.backspace || key.delete) {
                 setSearchFilter(prev => prev.slice(0, -1));
@@ -247,12 +242,29 @@ function App() {
                                 borderStyle="round"
                                 borderColor="yellow"
                                 paddingX={2}
-                                width={40}
-                                flexDirection="row"
+                                width={50}
+                                flexDirection="column"
                             >
-                                <Text>Search: </Text>
-                                <Text color="white">{searchFilter}</Text>
-                                <Text color="yellow">█</Text>
+                                <Box flexDirection="row" marginBottom={1}>
+                                    <Text bold>Search: </Text>
+                                    <Text color="white">{searchFilter}</Text>
+                                    <Text color="yellow">█</Text>
+                                </Box>
+                                <Box>
+                                    <Text dimColor>Type Team, City or Code (e.g. "Lakers", "NYK")</Text>
+                                </Box>
+                                {searchFilter.length > 0 && (
+                                    <Box marginTop={1}>
+                                        {(() => {
+                                            const matchCount = games.filter(g => checkGameMatchesFilter(g, searchFilter)).length;
+                                            return matchCount > 0 ? (
+                                                <Text color="green">✔ Found {matchCount} matches</Text>
+                                            ) : (
+                                                <Text color="red">✘ No matches found</Text>
+                                            );
+                                        })()}
+                                    </Box>
+                                )}
                             </Box>
                             <Box justifyContent="center" marginTop={0}>
                                 <Text dimColor>Enter to select • Esc to cancel</Text>

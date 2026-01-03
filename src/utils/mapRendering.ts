@@ -71,12 +71,12 @@ export function createGameMarker(
 export function checkGameMatchesFilter(game: Game, filter: string): boolean {
     if (!filter) return false;
     const lowerFilter = filter.toLowerCase();
-    return game.homeTeam.teamTricode.toLowerCase().startsWith(lowerFilter) ||
-        game.homeTeam.teamCity.toLowerCase().startsWith(lowerFilter) ||
-        game.homeTeam.teamName.toLowerCase().startsWith(lowerFilter) ||
-        game.awayTeam.teamTricode.toLowerCase().startsWith(lowerFilter) ||
-        game.awayTeam.teamCity.toLowerCase().startsWith(lowerFilter) ||
-        game.awayTeam.teamName.toLowerCase().startsWith(lowerFilter);
+    return game.homeTeam.teamTricode.toLowerCase().includes(lowerFilter) ||
+        game.homeTeam.teamCity.toLowerCase().includes(lowerFilter) ||
+        game.homeTeam.teamName.toLowerCase().includes(lowerFilter) ||
+        game.awayTeam.teamTricode.toLowerCase().includes(lowerFilter) ||
+        game.awayTeam.teamCity.toLowerCase().includes(lowerFilter) ||
+        game.awayTeam.teamName.toLowerCase().includes(lowerFilter);
 }
 
 export interface GameColor {
