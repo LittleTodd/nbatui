@@ -1,11 +1,12 @@
 """
 Social Prefetch Worker
 Background task to cache social buzz for finished games.
+Only caches 2+ hours after game ends to ensure upvotes have accumulated.
 """
 import asyncio
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from services.nba_service import NBAService
 from services.reddit_service import RedditService
 from services import cache_service
@@ -52,7 +53,7 @@ class SocialPrefetchWorker:
                 time.sleep(10)
 
     def _process_todays_games(self):
-        """Fetch today's games and cache social data for finished ones"""
+        """Fetch today's games and cache social data for finished ones (2+ hours old)"""
         try:
             print("[SocialWorker] Checking for finished games to cache...")
             games = self.nba_service.get_today_games()
@@ -65,7 +66,23 @@ class SocialPrefetchWorker:
                 if game.get('gameStatus') != 3:
                     continue
                 
-                # 2. Check if already cached in DB
+                game_id = game.get('gameId')
+                if not game_id:
+                    continue
+                
+                # 2. Record game end time (only records once)
+                cache_service.record_game_end_time(game_id)
+                
+                # 3. Check if 2+ hours have passed since game ended
+                end_time = cache_service.get_game_end_time(game_id)
+                if not end_time:
+                    continue
+                    
+                if datetime.now() < end_time + timedelta(hours=2):
+                    # Game ended less than 2 hours ago, skip for now
+                    continue
+                
+                # 4. Get team names and date for cache keys
                 team1 = game['awayTeam']['teamName']
                 team2 = game['homeTeam']['teamName']
                 game_date = game.get('gameTimeUTC', '').split('T')[0]
@@ -73,21 +90,20 @@ class SocialPrefetchWorker:
                 if not game_date: 
                     continue
 
-                # Check Heat Cache
+                # 5. Check Heat Cache - only fetch if not already cached
                 heat_key = f"heat_{team1}_{team2}_{game_date}"
                 if not cache_service.get_cached_social(heat_key):
-                    print(f"[SocialWorker] Prefetching Heat for {team1} vs {team2}...")
+                    print(f"[SocialWorker] Prefetching Heat for {team1} vs {team2} (2h+ passed)...")
                     self._prefetch_heat(team1, team2, heat_key)
-                    time.sleep(5) # Be polite
+                    time.sleep(5)  # Be polite to Reddit API
 
-                # Check Comments Cache
-                # We usually fetch limit=5 by default
+                # 6. Check Comments Cache
                 limit = 5
                 comments_key = f"comments_{team1}_{team2}_{game_date}_{limit}"
                 if not cache_service.get_cached_social(comments_key):
-                    print(f"[SocialWorker] Prefetching Comments for {team1} vs {team2}...")
+                    print(f"[SocialWorker] Prefetching Comments for {team1} vs {team2} (2h+ passed)...")
                     self._prefetch_comments(team1, team2, comments_key, limit)
-                    time.sleep(5) # Be polite
+                    time.sleep(5)
 
         except Exception as e:
             print(f"[SocialWorker] Error fetching games: {e}")

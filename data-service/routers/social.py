@@ -97,19 +97,12 @@ def get_game_heat(
         "url": thread['url']
     }
     
-    # 5. Save Logic
+    # 5. Save to memory cache only (permanent caching handled by Worker)
     set_mem_cache(mem_key, result)
     
-    # If Final, record end time and check if 2+ hours have passed
+    # Record game end time for Worker to use later
     if status == 3 and game_id:
-        # Record end time (only records once)
         cache_service.record_game_end_time(game_id)
-        
-        # Check if 2+ hours have passed since game ended
-        end_time = cache_service.get_game_end_time(game_id)
-        if end_time and datetime.now() > end_time + timedelta(hours=PERMANENT_CACHE_DELAY_HOURS):
-            if date:
-                cache_service.cache_social(db_key, result)
 
     return result
 
@@ -166,16 +159,11 @@ def get_game_tweets(
         
     result = {"tweets": formatted_comments}
     
-    # 5. CACHE - Record end time and only cache after 2+ hours
+    # 5. Save to memory cache only (permanent caching handled by Worker)
     set_mem_cache(mem_key, result)
+    
+    # Record game end time for Worker to use later
     if status == 3 and game_id:
-        # Record end time (only records once)
         cache_service.record_game_end_time(game_id)
-        
-        # Check if 2+ hours have passed since game ended
-        end_time = cache_service.get_game_end_time(game_id)
-        if end_time and datetime.now() > end_time + timedelta(hours=PERMANENT_CACHE_DELAY_HOURS):
-            if date:
-                cache_service.cache_social(db_key, result)
         
     return result
