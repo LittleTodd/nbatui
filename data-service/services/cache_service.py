@@ -6,7 +6,7 @@ import sqlite3
 import json
 import os
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Cache database path
 CACHE_DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'cache.db')
@@ -40,6 +40,13 @@ def _get_connection() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS game_end_times (
             game_id TEXT PRIMARY KEY,
             end_time TEXT NOT NULL
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS schedule_cache (
+            date TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            cached_at TEXT NOT NULL
         )
     ''')
     conn.commit()
@@ -252,3 +259,60 @@ def get_game_end_time(game_id: str) -> Optional[datetime]:
         return None
     except Exception:
         return None
+
+
+# ==================== SCHEDULE CACHE (Future Games) ====================
+
+SCHEDULE_CACHE_TTL_HOURS = 24  # Refresh schedule cache every 24 hours
+
+
+def cache_schedule(date: str, games: List[Dict[str, Any]]) -> None:
+    """
+    Cache future game schedule for a date.
+    Stores matchup info without requiring all games to be completed.
+    """
+    if not games:
+        return
+    
+    try:
+        conn = _get_connection()
+        conn.execute(
+            'INSERT OR REPLACE INTO schedule_cache (date, data, cached_at) VALUES (?, ?, ?)',
+            (date, json.dumps(games), datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def get_cached_schedule(date: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Get cached schedule for a future date.
+    Returns None if not cached or if cache is stale (>24h old).
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT data, cached_at FROM schedule_cache WHERE date = ?',
+            (date,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            cached_at = datetime.fromisoformat(row[1])
+            # Check if cache is stale
+            if datetime.now() - cached_at > timedelta(hours=SCHEDULE_CACHE_TTL_HOURS):
+                return None  # Cache expired, need fresh data
+            return json.loads(row[0])
+        return None
+    except Exception:
+        return None
+
+
+def is_schedule_cached(date: str) -> bool:
+    """
+    Check if a date has valid (non-stale) schedule cache.
+    """
+    return get_cached_schedule(date) is not None

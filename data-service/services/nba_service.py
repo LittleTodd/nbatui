@@ -49,12 +49,20 @@ class NBAService:
     def get_games_by_date(self, date_str: str) -> list[dict[str, Any]]:
         """
         Get games for a specific date (YYYY-MM-DD).
-        Uses cache for dates where all games are completed.
+        - Uses games_cache for completed dates
+        - Uses schedule_cache for future dates (24h TTL)
         """
-        # Check cache first
+        from datetime import datetime, timedelta
+        
+        # Check games_cache first (completed games with scores)
         cached = cache_service.get_cached_games(date_str)
         if cached is not None:
             return cached
+        
+        # Check schedule_cache for future dates
+        schedule_cached = cache_service.get_cached_schedule(date_str)
+        if schedule_cached is not None:
+            return schedule_cached
         
         try:
             # Use scoreboardv2 for arbitrary dates
@@ -187,7 +195,17 @@ class NBAService:
                 except Exception:
                     pass  # If Live API fails, keep Stats API data
             
-            cache_service.cache_games(date_str, games_list)
+            # Determine caching strategy based on game statuses
+            all_completed = all(g['gameStatus'] == 3 for g in games_list)
+            all_scheduled = all(g['gameStatus'] == 1 for g in games_list)
+            
+            if all_completed:
+                # Past date with all games finished - cache with scores
+                cache_service.cache_games(date_str, games_list)
+            elif all_scheduled:
+                # Future date - cache schedule (24h TTL)
+                cache_service.cache_schedule(date_str, games_list)
+            # Don't cache if mixed statuses (today's games in progress)
             
             return games_list
         except Exception:
@@ -357,3 +375,41 @@ class NBAService:
                 },
             })
         return formatted
+
+    def preload_future_schedules(self, days: int = 14) -> dict:
+        """
+        Preload game schedules for the next N days.
+        Called on startup to ensure smooth browsing of future dates.
+        Returns stats about cached dates.
+        """
+        from datetime import datetime, timedelta
+        
+        cached_count = 0
+        failed_count = 0
+        
+        today = datetime.now()
+        
+        for i in range(1, days + 1):
+            future_date = today + timedelta(days=i)
+            date_str = future_date.strftime('%Y-%m-%d')
+            
+            # Skip if already cached and not stale
+            if cache_service.is_schedule_cached(date_str):
+                cached_count += 1
+                continue
+            
+            try:
+                # Fetch and cache (will auto-cache if all games are scheduled)
+                games = self.get_games_by_date(date_str)
+                if games:
+                    cached_count += 1
+                    print(f"[Preload] Cached schedule for {date_str}: {len(games)} games", flush=True)
+            except Exception as e:
+                failed_count += 1
+                print(f"[Preload] Failed to cache {date_str}: {e}", flush=True)
+        
+        return {
+            "days_requested": days,
+            "cached": cached_count,
+            "failed": failed_count
+        }

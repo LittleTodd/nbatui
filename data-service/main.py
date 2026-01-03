@@ -42,6 +42,18 @@ worker = SocialPrefetchWorker()
 @app.on_event("startup")
 async def startup_event():
     worker.start()
+    
+    # Preload future schedules in background thread to not block startup
+    import threading
+    from services.nba_service import NBAService
+    
+    def preload_schedules():
+        nba_service = NBAService()
+        result = nba_service.preload_future_schedules(days=14)
+        print(f"[Startup] Schedule preload complete: {result}", flush=True)
+    
+    thread = threading.Thread(target=preload_schedules, daemon=True)
+    thread.start()
 
 @app.on_event("shutdown")
 async def shutdown_event():

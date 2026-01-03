@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { type Game, type GameOdds, fetchTodayGames, fetchGamesByDate, checkHealth, fetchPolymarketOdds, getOddsKey, type SocialHeat as HeatData } from '../services/apiClient.js';
 import { format, subDays, isSameDay } from 'date-fns';
+import { getTeamPosition } from '../data/teamCoords.js';
 
 interface GameState {
     games: Game[];
@@ -119,10 +120,30 @@ export const useGameStore = create<GameState>((set, get) => ({
         const { selectedIndex, games } = get();
         if (games.length === 0) return;
 
+        // Sort games by Y coordinate (top to bottom on map)
+        // Using homeTeam's position as the reference
+        const sortedByY = [...games].map((game, originalIndex) => ({
+            game,
+            originalIndex,
+            y: getTeamPosition(game.homeTeam.teamTricode).y
+        })).sort((a, b) => a.y - b.y);
+
+        // Find current game's position in the sorted list
+        const currentSortedIndex = sortedByY.findIndex(g => g.originalIndex === selectedIndex);
+
+        let newSortedIndex: number;
         if (direction === 'up') {
-            set({ selectedIndex: selectedIndex > 0 ? selectedIndex - 1 : games.length - 1 });
+            // Move to game higher on map (lower Y value)
+            newSortedIndex = currentSortedIndex > 0 ? currentSortedIndex - 1 : sortedByY.length - 1;
         } else {
-            set({ selectedIndex: selectedIndex < games.length - 1 ? selectedIndex + 1 : 0 });
+            // Move to game lower on map (higher Y value)
+            newSortedIndex = currentSortedIndex < sortedByY.length - 1 ? currentSortedIndex + 1 : 0;
+        }
+
+        // Set the new selected index using the original array index
+        const newGame = sortedByY[newSortedIndex];
+        if (newGame) {
+            set({ selectedIndex: newGame.originalIndex });
         }
     },
 
