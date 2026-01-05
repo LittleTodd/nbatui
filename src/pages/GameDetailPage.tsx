@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet } from '../services/apiClient.js';
+import { type Game, type Team, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet } from '../services/apiClient.js';
 import { TEAM_BG_COLORS } from '../data/teamColors.js';
 import { HeatIndicator } from '../components/HeatIndicator.js';
 
@@ -24,8 +24,20 @@ interface TeamStanding {
     strCurrentStreak: string;  // Current streak, e.g. "W 2" or "L 3"
 }
 
+interface BoxScoreTeam extends Team {
+    players: any[];
+}
+
+interface BoxScoreData {
+    gameId: string;
+    gameStatus: number;
+    gameStatusText: string;
+    homeTeam: BoxScoreTeam;
+    awayTeam: BoxScoreTeam;
+}
+
 export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
-    const [boxScore, setBoxScore] = useState<any>(null);
+    const [boxScore, setBoxScore] = useState<BoxScoreData | null>(null);
     const [standings, setStandings] = useState<TeamStanding[]>([]);
     const [odds, setOdds] = useState<GameOdds | null>(null);
     const [loading, setLoading] = useState(true);
@@ -134,20 +146,44 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
     return (
         <Box flexDirection="column" paddingX={1} paddingTop={1} paddingBottom={0} borderStyle="round" borderColor="cyan">
-            <Box justifyContent="center" marginBottom={0} flexDirection="column" alignItems="center">
-                <Text bold color="yellow">
-                    {boxScore.awayTeam.teamCity} {boxScore.awayTeam.teamName} ({boxScore.awayTeam.score})
-                    {' @ '}
-                    {boxScore.homeTeam.teamCity} {boxScore.homeTeam.teamName} ({boxScore.homeTeam.score})
-                </Text>
-            </Box>
+            {/* ENHANCED HEADER */}
+            <Box
+                borderStyle="double"
+                borderColor="yellow"
+                paddingX={2}
+                marginBottom={1}
+                flexDirection="column"
+                alignItems="center"
+                justifyContent="center"
+                width="100%"
+            >
+                <Box flexDirection="row" justifyContent="space-between" width="100%">
+                    <Box flexDirection="column" alignItems="flex-start" width="40%">
+                        <Text bold color={TEAM_BG_COLORS[boxScore.awayTeam.teamTricode] || 'white'}>
+                             {boxScore.awayTeam.teamCity} {boxScore.awayTeam.teamName}
+                        </Text>
+                        <Text bold color="white">
+                            {boxScore.awayTeam.score}
+                        </Text>
+                    </Box>
 
-            {/* Only show status for non-final games */}
-            {boxScore.gameStatus !== 3 && (
-                <Box marginBottom={0}>
-                    <Text>Status: {boxScore.gameStatusText}</Text>
+                    <Box flexDirection="column" alignItems="center" justifyContent="center" width="20%">
+                         <Text dimColor>@</Text>
+                         <Text color={boxScore.gameStatus === 3 ? 'red' : 'green'}>
+                            {boxScore.gameStatusText}
+                         </Text>
+                    </Box>
+
+                    <Box flexDirection="column" alignItems="flex-end" width="40%">
+                        <Text bold color={TEAM_BG_COLORS[boxScore.homeTeam.teamTricode] || 'white'}>
+                             {boxScore.homeTeam.teamName} {boxScore.homeTeam.teamCity}
+                        </Text>
+                        <Text bold color="white">
+                            {boxScore.homeTeam.score}
+                        </Text>
+                    </Box>
                 </Box>
-            )}
+            </Box>
 
             {/* Quarter-by-Quarter Scoring */}
             <QuarterScoreTable
@@ -155,7 +191,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 homeTeam={boxScore.homeTeam}
             />
 
-            <Box flexDirection="row" justifyContent="center">
+            <Box flexDirection="row" justifyContent="center" marginTop={1}>
                 {/* Away Team Top Performers */}
                 <BoxScoreTable
                     teamName={boxScore.awayTeam.teamCity}
@@ -177,22 +213,24 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 />
             </Box>
 
-            {/* Social Buzz Section */}
+            {/* Social Buzz Section - ENHANCED */}
             {tweets.length > 0 && (
                 <Box flexDirection="column" marginTop={1} paddingX={1} borderStyle="round" borderColor="gray">
-                    <Box>
+                    <Box marginBottom={1}>
                         <Text bold color="#ffcc00">💬 Social Buzz (r/nba)</Text>
                         {socialHeat && socialHeat.level !== 'cold' && (
-                            <Text> </Text>
-                        )}
-                        {socialHeat && socialHeat.level !== 'cold' && (
-                            <HeatIndicator level={socialHeat.level} count={socialHeat.count} />
+                             <Box marginLeft={1}>
+                                <HeatIndicator level={socialHeat.level} count={socialHeat.count} />
+                            </Box>
                         )}
                     </Box>
-                    <Box flexDirection="column" marginTop={1}>
+                    <Box flexDirection="column">
                         {tweets.slice(0, 3).map((t, i) => (
-                            <Box key={i} flexDirection="column" marginBottom={1}>
-                                <Text dimColor>@{t.user} <Text color="green">^ {t.likes}</Text></Text>
+                            <Box key={i} flexDirection="column" marginBottom={1} borderStyle="single" borderColor="gray" paddingX={1}>
+                                <Box justifyContent="space-between">
+                                    <Text bold color="cyan">@{t.user}</Text>
+                                    <Text color="green">^ {t.likes}</Text>
+                                </Box>
                                 <Text italic color="white">"{t.text}"</Text>
                             </Box>
                         ))}
@@ -200,7 +238,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 </Box>
             )}
 
-            <Box marginTop={0}>
+            <Box marginTop={1} justifyContent="center">
                 <Text dimColor>Press Esc to go back</Text>
             </Box>
         </Box>
