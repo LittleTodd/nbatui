@@ -214,11 +214,34 @@ export async function fetchBoxScore(gameId: string): Promise<any> {
     }
 }
 
-export async function fetchPlayByPlay(gameId: string): Promise<any> {
+export interface PlayByPlayAction {
+    actionNumber: number;
+    clock: string;
+    period: number;
+    periodType: string;
+    description: string;
+    teamTricode?: string;
+    playerNameI?: string;
+    scoreHome: string;
+    scoreAway: string;
+    actionType: string;
+    shotResult?: string;
+}
+
+export interface PlayByPlayResponse {
+    actions: PlayByPlayAction[];
+}
+
+export async function fetchPlayByPlay(gameId: string, gameStatus?: number): Promise<PlayByPlayResponse | null> {
     try {
-        const res = await fetch(`${BASE_URL}/games/${gameId}/playbyplay`);
+        let url = `${BASE_URL}/games/${gameId}/playbyplay`;
+        // Pass status to backend for caching completed games
+        if (gameStatus !== undefined) {
+            url += `?status=${gameStatus}`;
+        }
+        const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        return (await res.json()) as PlayByPlayResponse;
     } catch {
         return null;
     }

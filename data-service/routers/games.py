@@ -73,10 +73,13 @@ def get_game_boxscore(game_id: str):
 
 
 @router.get("/{game_id}/playbyplay")
-def get_game_playbyplay(game_id: str):
-    """Get play-by-play data for a specific game"""
+def get_game_playbyplay(game_id: str, status: int = None):
+    """
+    Get play-by-play data for a specific game.
+    Pass status=3 to enable caching for completed games.
+    """
     try:
-        data = nba_service.get_playbyplay(game_id)
+        data = nba_service.get_playbyplay(game_id, game_status=status)
         if not data:
             raise HTTPException(status_code=404, detail="Game not found or no data available")
         return data

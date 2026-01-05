@@ -27,7 +27,6 @@ if [ ! -f "data-service/venv/bin/ascii-art-animator" ]; then
 fi
 
 # 3. Start Data Service (Background)
-echo "Starting backend..."
 cd data-service
 source venv/bin/activate
 # Install requirements quiet

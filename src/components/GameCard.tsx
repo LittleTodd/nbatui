@@ -91,8 +91,8 @@ function GameCardImpl({ game, isSelected = false, compact = false, heat }: GameC
 
             {/* Home team */}
             <Box justifyContent="space-between">
-                <Text bold>{game.homeTeam.teamTricode}</text>
-                <Text bold>{game.homeTeam.score}</text>
+                <Text bold>{game.homeTeam.teamTricode}</Text>
+                <Text bold>{game.homeTeam.score}</Text>
             </Box>
 
             {/* City names */}

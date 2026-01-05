@@ -49,6 +49,13 @@ def _get_connection() -> sqlite3.Connection:
             cached_at TEXT NOT NULL
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS playbyplay_cache (
+            game_id TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        )
+    ''')
     conn.commit()
     return conn
 
@@ -207,14 +214,62 @@ def get_cache_stats() -> Dict[str, int]:
         games_count = conn.execute('SELECT COUNT(*) FROM games_cache').fetchone()[0]
         boxscore_count = conn.execute('SELECT COUNT(*) FROM boxscore_cache').fetchone()[0]
         social_count = conn.execute('SELECT COUNT(*) FROM social_cache').fetchone()[0]
+        playbyplay_count = conn.execute('SELECT COUNT(*) FROM playbyplay_cache').fetchone()[0]
         conn.close()
         return {
             "cached_dates": games_count,
             "cached_boxscores": boxscore_count,
-            "cached_social": social_count
+            "cached_social": social_count,
+            "cached_playbyplay": playbyplay_count
         }
     except Exception:
         return {"cached_dates": 0, "cached_boxscores": 0}
+
+
+def cache_playbyplay(game_id: str, data: Dict[str, Any]) -> None:
+    """
+    Cache play-by-play data for a completed game.
+    
+    Args:
+        game_id: NBA game ID
+        data: Play-by-play data dictionary
+    """
+    try:
+        conn = _get_connection()
+        conn.execute(
+            'INSERT OR REPLACE INTO playbyplay_cache (game_id, data, cached_at) VALUES (?, ?, ?)',
+            (game_id, json.dumps(data), datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # Silently fail
+
+
+def get_cached_playbyplay(game_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get cached play-by-play for a game.
+    
+    Args:
+        game_id: NBA game ID
+        
+    Returns:
+        Play-by-play data if cached, None otherwise
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT data FROM playbyplay_cache WHERE game_id = ?',
+            (game_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return json.loads(row[0])
+        return None
+    except Exception:
+        return None
 
 
 def record_game_end_time(game_id: str) -> None:

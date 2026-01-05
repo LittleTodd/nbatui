@@ -310,14 +310,32 @@ class NBAService:
         except Exception:
             return None
 
-    def get_playbyplay(self, game_id: str) -> dict[str, Any]:
+    def get_playbyplay(self, game_id: str, game_status: int = None) -> dict[str, Any]:
         """
-        Get play-by-play data for a specific game
+        Get play-by-play data for a specific game.
+        Caches data for completed games (gameStatus=3).
+        
+        Args:
+            game_id: NBA game ID
+            game_status: Optional game status (3=Final). If provided, enables caching.
         """
         try:
+            # Check cache first for completed games
+            if game_status == 3:
+                cached = cache_service.get_cached_playbyplay(game_id)
+                if cached:
+                    return cached
+            
+            # Fetch from API
             pbp = playbyplay.PlayByPlay(game_id=game_id)
             data = pbp.get_dict()
-            return data.get("game", {})
+            game_data = data.get("game", {})
+            
+            # Cache if game is completed
+            if game_status == 3 and game_data:
+                cache_service.cache_playbyplay(game_id, game_data)
+            
+            return game_data
         except Exception:
             return None
 

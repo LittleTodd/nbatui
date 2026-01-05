@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet } from '../services/apiClient.js';
+import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet, fetchPlayByPlay, type PlayByPlayAction } from '../services/apiClient.js';
 import { TEAM_BG_COLORS } from '../data/teamColors.js';
 import { HeatIndicator } from '../components/HeatIndicator.js';
+import { PlayByPlayStream } from '../components/PlayByPlayStream.js';
 
 interface GameDetailPageProps {
     game: Game;
@@ -31,6 +32,11 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     const [loading, setLoading] = useState(true);
     const [socialHeat, setSocialHeat] = useState<SocialHeat | null>(null);
     const [tweets, setTweets] = useState<Tweet[]>([]);
+    const [playByPlay, setPlayByPlay] = useState<PlayByPlayAction[]>([]);
+    // Live games (status=2) default to Play-by-Play, completed games (status=3) default to Social Buzz
+    const [activeTab, setActiveTab] = useState<'playbyplay' | 'social'>(
+        game.gameStatus === 2 ? 'playbyplay' : 'social'
+    );
 
     const isScheduled = game.gameStatus === 1;
 
@@ -91,10 +97,15 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 }
             });
         } else {
-            // For live/completed games, fetch boxscore
-            fetchBoxScore(game.gameId).then((boxData: any) => {
+            // For live/completed games, fetch boxscore and play-by-play
+            // Pass gameStatus to enable caching for completed games (status=3)
+            Promise.all([
+                fetchBoxScore(game.gameId),
+                fetchPlayByPlay(game.gameId, game.gameStatus)
+            ]).then(([boxData, pbpData]) => {
                 if (mounted) {
                     setBoxScore(boxData);
+                    setPlayByPlay(pbpData?.actions || []);
                     setLoading(false);
                 }
             });
@@ -103,9 +114,69 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
         return () => { mounted = false; };
     }, [game.gameId, isScheduled]);
 
+    // Auto-refresh for live games (gameStatus === 2)
+    useEffect(() => {
+        // Only refresh for live games
+        if (game.gameStatus !== 2) return;
+
+        const refreshData = async () => {
+            try {
+                const [boxData, pbpData] = await Promise.all([
+                    fetchBoxScore(game.gameId),
+                    fetchPlayByPlay(game.gameId, game.gameStatus)
+                ]);
+                if (boxData) setBoxScore(boxData);
+                if (pbpData?.actions) setPlayByPlay(pbpData.actions);
+            } catch {
+                // Silently fail
+            }
+        };
+
+        // Determine refresh interval based on game state
+        const getRefreshInterval = () => {
+            if (!boxScore) return 60000; // 1 minute default
+
+            const statusText = boxScore.gameStatusText || '';
+            const period = boxScore.period || 0;
+            const clock = boxScore.gameClock || '';
+
+            // Halftime detection (period 2 ended)
+            if (statusText.toLowerCase().includes('halftime') ||
+                (period === 2 && clock === 'PT00M00.00S')) {
+                return 300000; // 5 minutes during halftime
+            }
+
+            // Quarter break detection (period ended but not halftime)
+            if (clock === 'PT00M00.00S' && period !== 2 && period < 5) {
+                return 120000; // 2 minutes during quarter breaks
+            }
+
+            // Game ended - don't refresh
+            if (boxScore.gameStatus === 3) {
+                return 0; // Signal to stop
+            }
+
+            return 60000; // 1 minute during normal play
+        };
+
+        const interval = getRefreshInterval();
+        if (interval === 0) return; // Game ended, no refresh needed
+
+        const timer = setInterval(refreshData, interval);
+
+        return () => clearInterval(timer);
+    }, [game.gameId, game.gameStatus, boxScore?.gameStatus, boxScore?.period, boxScore?.gameClock]);
+
     useInput((input, key) => {
         if (key.escape || input === 'q' || key.backspace) {
             onBack();
+        }
+        // Tab switching: P for Play-by-Play, S for Social
+        if (input === 'p' || input === 'P') {
+            setActiveTab('playbyplay');
+        }
+        if (input === 's' || input === 'S') {
+            setActiveTab('social');
         }
     });
 
@@ -177,28 +248,57 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 />
             </Box>
 
-            {/* Social Buzz Section */}
-            {tweets.length > 0 && (
-                <Box flexDirection="column" marginTop={1} paddingX={1} borderStyle="round" borderColor="gray">
-                    <Box>
-                        <Text bold color="#ffcc00">💬 Social Buzz (r/nba)</Text>
-                        {socialHeat && socialHeat.level !== 'cold' && (
-                            <Text> </Text>
-                        )}
-                        {socialHeat && socialHeat.level !== 'cold' && (
+            {/* Tab-switchable Bottom Panel */}
+            <Box flexDirection="column" marginTop={1} paddingX={1} borderStyle="round" borderColor="gray">
+                {/* Tab Header */}
+                <Box marginBottom={1}>
+                    <Text
+                        bold={activeTab === 'playbyplay'}
+                        color={activeTab === 'playbyplay' ? 'green' : 'gray'}
+                    >
+                        [P] {game.gameStatus === 2 ? '▶ Live Stream' : '📜 Play-by-Play'}
+                    </Text>
+                    <Text>  </Text>
+                    <Text
+                        bold={activeTab === 'social'}
+                        color={activeTab === 'social' ? '#ffcc00' : 'gray'}
+                    >
+                        [S] 💬 Social Buzz
+                    </Text>
+                    {socialHeat && socialHeat.level !== 'cold' && (
+                        <Box marginLeft={1}>
                             <HeatIndicator level={socialHeat.level} count={socialHeat.count} />
+                        </Box>
+                    )}
+                </Box>
+
+                {/* Tab Content */}
+                {activeTab === 'playbyplay' ? (
+                    <PlayByPlayStream
+                        actions={playByPlay}
+                        homeTricode={game.homeTeam.teamTricode}
+                        awayTricode={game.awayTeam.teamTricode}
+                        homeName={game.homeTeam.teamName}
+                        awayName={game.awayTeam.teamName}
+                        homeScore={game.homeTeam.score}
+                        awayScore={game.awayTeam.score}
+                        isLive={game.gameStatus === 2}
+                    />
+                ) : (
+                    <Box flexDirection="column">
+                        {tweets.length > 0 ? (
+                            tweets.slice(0, 3).map((t, i) => (
+                                <Box key={i} flexDirection="column" marginBottom={1}>
+                                    <Text dimColor>@{t.user} <Text color="green">^ {t.likes}</Text></Text>
+                                    <Text italic color="white">"{t.text}"</Text>
+                                </Box>
+                            ))
+                        ) : (
+                            <Text dimColor>No social buzz data available.</Text>
                         )}
                     </Box>
-                    <Box flexDirection="column" marginTop={1}>
-                        {tweets.slice(0, 3).map((t, i) => (
-                            <Box key={i} flexDirection="column" marginBottom={1}>
-                                <Text dimColor>@{t.user} <Text color="green">^ {t.likes}</Text></Text>
-                                <Text italic color="white">"{t.text}"</Text>
-                            </Box>
-                        ))}
-                    </Box>
-                </Box>
-            )}
+                )}
+            </Box>
 
             <Box marginTop={0}>
                 <Text dimColor>Press Esc to go back</Text>
