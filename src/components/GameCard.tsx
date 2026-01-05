@@ -6,6 +6,8 @@ import type { Game } from '../services/apiClient';
 import { getGameStatusInfo } from '../services/apiClient';
 import { getTeamColors } from '../data/teamColors';
 import { HeatIndicator, type HeatLevel } from './HeatIndicator';
+import { Box, Text } from 'ink';
+import React, { memo } from 'react';
 
 export interface HeatData {
     level: HeatLevel;
@@ -19,7 +21,7 @@ interface GameCardProps {
     heat?: HeatData;
 }
 
-export function GameCard({ game, isSelected = false, compact = false, heat }: GameCardProps) {
+function GameCardComponent({ game, isSelected = false, compact = false, heat }: GameCardProps) {
     const { text: statusText, isLive, isFinal } = getGameStatusInfo(game);
 
     // Determine border color based on state and heat
@@ -38,28 +40,28 @@ export function GameCard({ game, isSelected = false, compact = false, heat }: Ga
     if (compact) {
         // Compact mode for smaller terminals
         return (
-            <box
+            <Box
                 borderStyle="round"
                 borderColor={getBorderColor()}
                 paddingX={1}
             >
-                <text>
-                    <b>{game.awayTeam.teamTricode}</b>
-                    <span> {game.awayTeam.score}</span>
-                    <span dimColor> @ </span>
-                    <b>{game.homeTeam.teamTricode}</b>
-                    <span> {game.homeTeam.score}</span>
-                    <span dimColor> {statusText}</span>
+                <Text>
+                    <Text bold>{game.awayTeam.teamTricode}</Text>
+                    <Text> {game.awayTeam.score}</Text>
+                    <Text dimColor> @ </Text>
+                    <Text bold>{game.homeTeam.teamTricode}</Text>
+                    <Text> {game.homeTeam.score}</Text>
+                    <Text dimColor> {statusText}</Text>
                     {heat && heat.level !== 'cold' && (
                         <HeatIndicator level={heat.level} count={heat.count} compact={true} />
                     )}
-                </text>
-            </box>
+                </Text>
+            </Box>
         );
     }
 
     return (
-        <box
+        <Box
             flexDirection="column"
             borderStyle="round"
             borderColor={getBorderColor()}
@@ -67,38 +69,47 @@ export function GameCard({ game, isSelected = false, compact = false, heat }: Ga
             minWidth={20}
         >
             {/* Status bar */}
-            <box justifyContent="center">
-                <text
+            <Box justifyContent="center">
+                <Text
                     color={isLive ? 'green' : (isFinal ? 'gray' : 'yellow')}
                     bold={isLive}
                 >
                     {isLive ? '● LIVE ' : ''}{statusText}
-                </text>
+                </Text>
                 {heat && (
-                    <box marginLeft={1}>
+                    <Box marginLeft={1}>
                         <HeatIndicator level={heat.level} count={heat.count} />
-                    </box>
+                    </Box>
                 )}
-            </box>
+            </Box>
 
             {/* Away team */}
-            <box justifyContent="space-between">
-                <text bold>{game.awayTeam.teamTricode}</text>
-                <text bold>{game.awayTeam.score}</text>
-            </box>
+            <Box justifyContent="space-between">
+                <Text bold>{game.awayTeam.teamTricode}</Text>
+                <Text bold>{game.awayTeam.score}</Text>
+            </Box>
 
             {/* Home team */}
-            <box justifyContent="space-between">
-                <text bold>{game.homeTeam.teamTricode}</text>
-                <text bold>{game.homeTeam.score}</text>
-            </box>
+            <Box justifyContent="space-between">
+                <Text bold>{game.homeTeam.teamTricode}</Text>
+                <Text bold>{game.homeTeam.score}</Text>
+            </Box>
 
             {/* City names */}
-            <box justifyContent="center">
-                <text dimColor>
+            <Box justifyContent="center">
+                <Text dimColor>
                     {game.awayTeam.teamCity} @ {game.homeTeam.teamCity}
-                </text>
-            </box>
-        </box>
+                </Text>
+            </Box>
+        </Box>
     );
 }
+
+export const GameCard = memo(GameCardComponent, (prev, next) => {
+    return (
+        prev.isSelected === next.isSelected &&
+        prev.compact === next.compact &&
+        prev.game === next.game && // Reference equality is sufficient for game object from store
+        prev.heat === next.heat
+    );
+});
