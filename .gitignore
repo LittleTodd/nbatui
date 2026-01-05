@@ -1,50 +1,72 @@
-# dependencies (bun install)
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+data-service/venv
+venv
+bin
 
-# output
-out
-dist
-*.tgz
-
-# code coverage
+# Testing
 coverage
-*.lcov
+.nyc_output
 
-# logs
-logs
-*.log
-report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+# Production
+build
+dist
 
-# dotenv environment variable files
+# Misc
+.DS_Store
 .env
+.env.local
 .env.development.local
 .env.test.local
 .env.production.local
-.env.local
 
-# caches
-.eslintcache
-.cache
-*.tsbuildinfo
-
-# IntelliJ based IDEs
-.idea
-
-# Finder (MacOS) folder config
-.DS_Store
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+data-service/backend.log
+data-service/backend_debug.log
 
 # Python
-venv/
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 .Python
 env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Project specific
-plan.md
-experiments/
+# Database
+*.db
 data-service/cache.db
-data-service/*.log
-*.log
+
+# VS Code
+.vscode/*
+
+# Scripts and Debug
+scripts/dev.sh
+start.sh
+.gitignore
+task.md
+plan.md
+implementation_plan.md
+walkthrough.md
+*.md
+!README.md
