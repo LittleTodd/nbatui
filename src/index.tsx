@@ -100,6 +100,7 @@ function App() {
                         g.awayTeam.teamCity.toLowerCase().includes(filter) ||
                         g.awayTeam.teamName.toLowerCase().includes(filter)
                     );
+                    setSearchFilter(''); // Clear search filter to prevent persistent highlight
                     if (foundIdx !== -1) {
                         setSelectedIndex(foundIdx);
                         if (games.length > 0) setView('detail');

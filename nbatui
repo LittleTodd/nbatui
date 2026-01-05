@@ -49,13 +49,21 @@ while true; do
         curl -s "http://localhost:8765/api/polymarket/odds" > /dev/null 2>&1 &
         curl -s "http://localhost:8765/games/standings" > /dev/null 2>&1 &
         
-        # Play the animation once while data loads in background
+        # Try to play the loading animation, fallback to text if terminal too small
         if [ -f "src/gif/loading.gif" ]; then
             # Play once (-m 1), very slow (-s very_slow = 1 second per frame)
+            # Show errors for debugging
             ./data-service/venv/bin/ascii-art-animator -f src/gif/loading.gif -m 1 -s very_slow -C cyan
+            ANIM_EXIT=$?
+            if [ $ANIM_EXIT -ne 0 ]; then
+                echo -e "${YELLOW}Animation failed (exit code $ANIM_EXIT), using text fallback${NC}"
+                echo -e "${CYAN}🏀 Loading NBA TUI...${NC}"
+                sleep 2
+            fi
         else
-            echo "Loading..."
-            sleep 3
+            echo -e "${YELLOW}Loading GIF not found${NC}"
+            echo -e "${CYAN}🏀 Loading NBA TUI...${NC}"
+            sleep 2
         fi
         break
     fi

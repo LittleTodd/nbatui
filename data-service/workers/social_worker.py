@@ -85,7 +85,8 @@ class SocialPrefetchWorker:
                 # 4. Get team names and date for cache keys
                 team1 = game['awayTeam']['teamName']
                 team2 = game['homeTeam']['teamName']
-                game_date = game.get('gameTimeUTC', '').split('T')[0]
+                # Use localDate (converted to user's timezone) for consistent cache keys
+                game_date = game.get('localDate') or game.get('gameTimeUTC', '').split('T')[0]
                 
                 if not game_date: 
                     continue

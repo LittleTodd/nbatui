@@ -18,31 +18,12 @@ class NBAService:
     def get_today_games(self) -> list[dict[str, Any]]:
         """
         Get all games scheduled for 'NBA Today'.
-        Calculates the date based on US/Eastern time.
+        Uses the user's local timezone to determine today's date.
         """
-        from datetime import datetime, timedelta
+        from .timezone_utils import get_local_today
         
-        # Calculate ET time (UTC-5 roughly, ignoring DST nuance for simplicity or use pytz if added)
-        # Better: just use UTC and offset
-        utc_now = datetime.utcnow()
-        # ET is UTC-5 Standard, UTC-4 Daylight. Let's use UTC-5 as base approx.
-        # NBA Day changeover usually happens 4AM-6AM ET.
-        # Let's say we switch to "next day" at 12:00 PM UTC (7 AM ET).
-        # Before 12:00 PM UTC, we might still want to see results of "last night" if we are late?
-        # User Feedback: "12/28 almost couldn't load".
-        # Current User State: Jan 1 00:32 UTC+8 -> Dec 31 11:32 AM ET.
-        # They want to see Dec 31 games.
-        
-        # Simple Logic: Get current date in ET.
-        # If explicit DST handling is needed we need timezone lib, but let's do manual offset -5
-        et_now = utc_now - timedelta(hours=5)
-        
-        # If it's early morning in ET (e.g. before 6 AM), we might consider it "yesterday" 
-        # BUT usually "Today" view should show scheduled games for the calendar day.
-        # At 11:32 AM ET, Dec 31 -> We want Dec 31.
-        
-        # Format YYYY-MM-DD
-        today_str = et_now.strftime('%Y-%m-%d')
+        # Get today's date in user's local timezone
+        today_str = get_local_today()
         
         return self.get_games_by_date(today_str)
 
@@ -53,16 +34,25 @@ class NBAService:
         - Uses schedule_cache for future dates (24h TTL)
         """
         from datetime import datetime, timedelta
+        from .timezone_utils import convert_et_to_local_date
+        
+        def ensure_local_date(games: list) -> list:
+            """Add localDate field to games if missing"""
+            for game in games:
+                if not game.get('localDate'):
+                    game_time = game.get('gameTimeUTC', date_str)
+                    game['localDate'] = convert_et_to_local_date(game_time)
+            return games
         
         # Check games_cache first (completed games with scores)
         cached = cache_service.get_cached_games(date_str)
         if cached is not None:
-            return cached
+            return ensure_local_date(cached)
         
         # Check schedule_cache for future dates
         schedule_cached = cache_service.get_cached_schedule(date_str)
         if schedule_cached is not None:
-            return schedule_cached
+            return ensure_local_date(schedule_cached)
         
         try:
             # Use scoreboardv2 for arbitrary dates
@@ -120,13 +110,19 @@ class NBAService:
                 game_status_id = row[h_map['GAME_STATUS_ID']] # 1=Scheduled, 2=In Progress, 3=Final
                 status_text = row[h_map['GAME_STATUS_TEXT']] 
                 
+                # Convert ET game date to local date for cache key consistency
+                from .timezone_utils import convert_et_to_local_date
+                game_date_et = row[h_map['GAME_DATE_EST']]
+                local_date = convert_et_to_local_date(game_date_et) if game_date_et else date_str
+                
                 games_map[game_id] = {
                     "gameId": game_id,
                     "gameStatus": int(game_status_id),
                     "gameStatusText": status_text,
                     "period": 0,
                     "gameClock": "",
-                    "gameTimeUTC": row[h_map['GAME_DATE_EST']], 
+                    "gameTimeUTC": game_date_et,
+                    "localDate": local_date,  # User's local date for this game
                     "homeTeam": {
                         **home_team,
                         "score": home_score

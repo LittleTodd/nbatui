@@ -375,8 +375,15 @@ const BoxScoreTable = ({ teamName, teamTricode, players }: { teamName: string, t
 
     const teamBg = TEAM_BG_COLORS[teamTricode] || '#333';
 
+    // Dynamic width calculation
+    // Each BoxScore table gets roughly 35% of terminal width
+    const termWidth = process.stdout.columns || 180;
+    const tableWidth = Math.floor(termWidth * 0.35);
+    const statColWidth = 5; // Minimum for PTS, REB, AST
+    const nameWidth = Math.max(12, tableWidth - statColWidth * 3 - 8); // Remaining for name
+
     return (
-        <Box flexDirection="column" marginRight={2} borderStyle="round" borderColor={teamBg} padding={1}>
+        <Box flexDirection="column" marginRight={1} borderStyle="round" borderColor={teamBg} padding={1} flexShrink={1}>
             {/* Header with Team Color Background */}
             <Box marginBottom={1}>
                 <Text bold backgroundColor={teamBg} color="#ffffff"> {teamName} </Text>
@@ -386,27 +393,27 @@ const BoxScoreTable = ({ teamName, teamTricode, players }: { teamName: string, t
             <Box flexDirection="column">
                 {/* Table Header */}
                 <Box borderStyle="single" borderBottom={true} borderTop={false} borderLeft={false} borderRight={false} borderColor="gray" marginBottom={1}>
-                    <Box width={26}><Text dimColor>PLAYER</Text></Box>
-                    <Box width={8} justifyContent="flex-end"><Text dimColor>PTS</Text></Box>
-                    <Box width={8} justifyContent="flex-end"><Text dimColor>REB</Text></Box>
-                    <Box width={8} justifyContent="flex-end"><Text dimColor>AST</Text></Box>
+                    <Box width={nameWidth}><Text dimColor>PLAYER</Text></Box>
+                    <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>PTS</Text></Box>
+                    <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>REB</Text></Box>
+                    <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>AST</Text></Box>
                 </Box>
 
                 {/* Rows */}
                 {activePlayers.map((p: any) => {
-                    // Smart name formatting
+                    // Smart name formatting based on available width
                     let displayName = p.nameI || '';
-                    if (displayName.length > 26) {
+                    if (displayName.length > nameWidth) {
                         const parts = displayName.split(' ');
                         displayName = parts[0].charAt(0) + '. ' + parts.slice(1).join(' ');
-                        if (displayName.length > 26) displayName = displayName.slice(0, 24) + '..';
+                        if (displayName.length > nameWidth) displayName = displayName.slice(0, nameWidth - 2) + '..';
                     }
                     return (
                         <Box key={p.personId} marginBottom={0}>
-                            <Box width={26}><Text color="white" bold>{displayName}</Text></Box>
-                            <Box width={8} justifyContent="flex-end"><Text bold color="cyan">{p.statistics.points}</Text></Box>
-                            <Box width={8} justifyContent="flex-end"><Text dimColor>{p.statistics.reboundsTotal}</Text></Box>
-                            <Box width={8} justifyContent="flex-end"><Text dimColor>{p.statistics.assists}</Text></Box>
+                            <Box width={nameWidth}><Text color="white" bold>{displayName}</Text></Box>
+                            <Box width={statColWidth} justifyContent="flex-end"><Text bold color="cyan">{p.statistics.points}</Text></Box>
+                            <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>{p.statistics.reboundsTotal}</Text></Box>
+                            <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>{p.statistics.assists}</Text></Box>
                         </Box>
                     );
                 })}
@@ -527,10 +534,9 @@ interface TeamWithStats {
     statistics?: TeamStats;
 }
 
-const StatBar = ({ leftVal, rightVal, leftColor, rightColor }: { leftVal: number; rightVal: number; leftColor: string; rightColor: string }) => {
+const StatBar = ({ leftVal, rightVal, leftColor, rightColor, barWidth = 26 }: { leftVal: number; rightVal: number; leftColor: string; rightColor: string; barWidth?: number }) => {
     const total = leftVal + rightVal || 1;
     const leftPct = leftVal / total;
-    const barWidth = 26;
     const leftBars = Math.round(leftPct * barWidth);
     const rightBars = barWidth - leftBars;
 
@@ -605,6 +611,14 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
         },
     ];
 
+    // Calculate dynamic widths based on terminal size
+    // BoxScore tables get 35% each (70% total), Team Stats gets remaining 30%
+    const termWidth = process.stdout.columns || 180;
+    const panelWidth = Math.floor(termWidth * 0.30) - 6; // 30% minus borders/padding
+
+    const sideWidth = 8; // Width for value columns (e.g., "56%", "(55-98)")
+    const barWidth = Math.max(10, panelWidth - sideWidth * 2); // Remaining for bar
+
     return (
         <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginX={1}>
             {/* Header: Title */}
@@ -614,11 +628,11 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
 
             {/* Team Codes */}
             <Box marginBottom={1}>
-                <Box width={14} justifyContent="flex-start">
+                <Box width={sideWidth} justifyContent="flex-start">
                     <Text bold backgroundColor={awayBg} color="#ffffff"> {awayTeam.teamTricode} </Text>
                 </Box>
-                <Box width={26} justifyContent="center" />
-                <Box width={14} justifyContent="flex-end">
+                <Box width={barWidth} justifyContent="center" />
+                <Box width={sideWidth} justifyContent="flex-end">
                     <Text bold backgroundColor={homeBg} color="#ffffff"> {homeTeam.teamTricode} </Text>
                 </Box>
             </Box>
@@ -628,25 +642,25 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
                 <Box key={i} flexDirection="column" marginBottom={0}>
                     {/* Main row: Away Value | Bar Chart | Home Value */}
                     <Box>
-                        <Box width={14} justifyContent="flex-start">
+                        <Box width={sideWidth} justifyContent="flex-start">
                             <Text bold color={stat.awayVal >= stat.homeVal ? 'green' : 'white'}>{stat.awayDisplay}</Text>
                         </Box>
-                        <Box width={26} justifyContent="center">
-                            <StatBar leftVal={stat.awayVal} rightVal={stat.homeVal} leftColor={awayBg} rightColor={homeBg} />
+                        <Box width={barWidth} justifyContent="center">
+                            <StatBar leftVal={stat.awayVal} rightVal={stat.homeVal} leftColor={awayBg} rightColor={homeBg} barWidth={barWidth} />
                         </Box>
-                        <Box width={14} justifyContent="flex-end">
+                        <Box width={sideWidth} justifyContent="flex-end">
                             <Text bold color={stat.homeVal >= stat.awayVal ? 'green' : 'white'}>{stat.homeDisplay}</Text>
                         </Box>
                     </Box>
                     {/* Sub row: (M-A) | Label | (M-A) */}
                     <Box>
-                        <Box width={14} justifyContent="flex-start">
+                        <Box width={sideWidth} justifyContent="flex-start">
                             <Text dimColor>{stat.awaySub || ''}</Text>
                         </Box>
-                        <Box width={26} justifyContent="center">
+                        <Box width={barWidth} justifyContent="center">
                             <Text dimColor>{stat.label}</Text>
                         </Box>
-                        <Box width={14} justifyContent="flex-end">
+                        <Box width={sideWidth} justifyContent="flex-end">
                             <Text dimColor>{stat.homeSub || ''}</Text>
                         </Box>
                     </Box>
