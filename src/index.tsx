@@ -207,29 +207,56 @@ function App() {
             <Box flexDirection="row" flexGrow={1} justifyContent="center" marginTop={1}>
                 {/* ... Main Content ... */}
                 <Box flexDirection="column" alignItems="center">
-                    {games.length === 0 && !loading ? (
-                        <Box
-                            flexDirection="column"
-                            alignItems="center"
-                            justifyContent="center"
-                            height={mapHeight}
-                            borderStyle="round"
-                            borderColor="gray"
-                            paddingX={4}
-                            paddingY={2}
-                        >
-                            <Text bold color="yellow">🏀 No Games Scheduled 🏀</Text>
-                            <Box marginTop={1}>
-                                <Text dimColor>No NBA games found for this date.</Text>
-                            </Box>
-                            <Box marginTop={1}>
-                                <Text dimColor>Use </Text>
-                                <Text color="cyan" bold>← →</Text>
-                                <Text dimColor> to browse other dates</Text>
-                            </Box>
-                        </Box>
-                    ) : (
-                        mapWithGames.map((line, rowIdx) => (
+                    {(() => {
+                        if (games.length === 0 && loading) {
+                            return (
+                                <Box
+                                    flexDirection="column"
+                                    alignItems="center"
+                                    justifyContent="center"
+                                    height={mapHeight}
+                                    borderStyle="round"
+                                    borderColor="cyan"
+                                    paddingX={4}
+                                    paddingY={2}
+                                >
+                                    <Text color="cyan"> <Spinner type="dots" /> </Text>
+                                    <Box marginTop={1}>
+                                        <Text bold color="white">Loading NBA Data...</Text>
+                                    </Box>
+                                    <Box marginTop={0}>
+                                        <Text dimColor>Connecting to satellite...</Text>
+                                    </Box>
+                                </Box>
+                            );
+                        }
+
+                        if (games.length === 0) {
+                            return (
+                                <Box
+                                    flexDirection="column"
+                                    alignItems="center"
+                                    justifyContent="center"
+                                    height={mapHeight}
+                                    borderStyle="round"
+                                    borderColor="gray"
+                                    paddingX={4}
+                                    paddingY={2}
+                                >
+                                    <Text bold color="yellow">🏀 No Games Scheduled 🏀</Text>
+                                    <Box marginTop={1}>
+                                        <Text dimColor>No NBA games found for this date.</Text>
+                                    </Box>
+                                    <Box marginTop={1}>
+                                        <Text dimColor>Use </Text>
+                                        <Text color="cyan" bold>← →</Text>
+                                        <Text dimColor> to browse other dates</Text>
+                                    </Box>
+                                </Box>
+                            );
+                        }
+
+                        return mapWithGames.map((line, rowIdx) => (
                             <MapLine
                                 key={rowIdx}
                                 line={line}
@@ -239,8 +266,8 @@ function App() {
                                 odds={odds}
                                 liveDotVisible={liveDotVisible}
                             />
-                        ))
-                    )}
+                        ));
+                    })()}
 
                     {isSearching ? (
                         <Box flexDirection="column" marginTop={1} alignSelf="center">
