@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { Text } from 'ink';
 import type { Game, GameOdds } from '../services/apiClient.js';
 import type { HeatData } from '../hooks/useSocialHeat.js';
-import { TEAM_BG_COLORS } from '../data/teamColors.js';
+import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { createGameMarker, type GameColor } from '../utils/mapRendering.js';
 import { getOddsKey as fetchOddsKey } from '../services/apiClient.js';
 
@@ -77,7 +77,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
 
         const markerElements: React.ReactNode[] = [];
 
-        const renderText = (text: string, key: string, bg?: string) => {
+        const renderText = (text: string, key: string, bg?: string, teamCode?: string) => {
             if (!text) return null;
 
             const isFinal = game.gameStatus === 3;
@@ -93,10 +93,10 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
                 finalColor = 'black';
                 finalBold = true;
                 finalDim = false;
-            } else if (bg) {
-                // Team Color Block
+            } else if (bg && teamCode) {
+                // Team Color Block - use team-specific text color
                 finalBg = bg;
-                finalColor = '#ffffff';
+                finalColor = TEAM_TEXT_COLORS[teamCode] || '#ffffff';
                 finalBold = true;
                 finalDim = false;
             } else if (marker.heat?.level === 'fire' || marker.heat?.level === 'hot') {
@@ -144,7 +144,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
             const postAway = parts1.slice(1).join(away);
 
             markerElements.push(renderText(preAway, `pre-${i}`));
-            markerElements.push(renderText(` ${away} `, `away-${i}`, awayColor));
+            markerElements.push(renderText(` ${away} `, `away-${i}`, awayColor, away));
 
             const parts2 = postAway.split(home);
             if (parts2.length >= 2) {
@@ -152,7 +152,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
                 const postHome = parts2.slice(1).join(home);
 
                 markerElements.push(renderText(mid, `mid-${i}`));
-                markerElements.push(renderText(` ${home} `, `home-${i}`, homeColor));
+                markerElements.push(renderText(` ${home} `, `home-${i}`, homeColor, home));
                 markerElements.push(renderText(postHome, `post-${i}`));
             } else {
                 markerElements.push(renderText(postAway, `rest-${i}`));

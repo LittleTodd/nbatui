@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet, fetchPlayByPlay, type PlayByPlayAction } from '../services/apiClient.js';
-import { TEAM_BG_COLORS } from '../data/teamColors.js';
+import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { HeatIndicator } from '../components/HeatIndicator.js';
 import { PlayByPlayStream } from '../components/PlayByPlayStream.js';
 
@@ -205,14 +205,8 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     }
 
     return (
-        <Box flexDirection="column" paddingX={1} paddingTop={1} paddingBottom={0} borderStyle="round" borderColor="cyan">
-            <Box justifyContent="center" marginBottom={0} flexDirection="column" alignItems="center">
-                <Text bold color="yellow">
-                    {boxScore.awayTeam.teamCity} {boxScore.awayTeam.teamName} ({boxScore.awayTeam.score})
-                    {' @ '}
-                    {boxScore.homeTeam.teamCity} {boxScore.homeTeam.teamName} ({boxScore.homeTeam.score})
-                </Text>
-            </Box>
+        <Box flexDirection="column" paddingX={1} paddingTop={0} paddingBottom={0} borderStyle="round" borderColor="cyan">
+
 
             {/* Only show status for non-final games */}
             {boxScore.gameStatus !== 3 && (
@@ -349,9 +343,9 @@ function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game
             </Box>
 
             <Box justifyContent="center" marginBottom={1}>
-                <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color="#ffffff"> {game.awayTeam.teamTricode} </Text>
+                <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text>
                 <Text color="gray">  vs  </Text>
-                <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color="#ffffff"> {game.homeTeam.teamTricode} </Text>
+                <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text>
             </Box>
 
             {/* Tip-off time - Highlighted */}
@@ -369,11 +363,11 @@ function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game
                 <Text bold color="cyan">📊 Season Records</Text>
                 <Box marginTop={1} flexDirection="column">
                     <Box>
-                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color="#ffffff"> {game.awayTeam.teamTricode} </Text></Box>
+                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text></Box>
                         <Text>  {formatRecord(awayStanding)}</Text>
                     </Box>
                     <Box>
-                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color="#ffffff"> {game.homeTeam.teamTricode} </Text></Box>
+                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text></Box>
                         <Text>  {formatRecord(homeStanding)}</Text>
                     </Box>
                 </Box>
@@ -389,7 +383,7 @@ function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game
                 <Text bold color="cyan">🔥 Recent Form (L10)</Text>
                 <Box marginTop={1} flexDirection="column">
                     <Box>
-                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color="#ffffff"> {game.awayTeam.teamTricode} </Text></Box>
+                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text></Box>
                         <Text>  {awayStanding?.L10 || 'N/A'}</Text>
                         {awayStanding?.strCurrentStreak && (
                             <Text color={awayStanding.strCurrentStreak.startsWith('W') ? 'green' : 'red'} bold>
@@ -398,7 +392,7 @@ function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game
                         )}
                     </Box>
                     <Box>
-                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color="#ffffff"> {game.homeTeam.teamTricode} </Text></Box>
+                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text></Box>
                         <Text>  {homeStanding?.L10 || 'N/A'}</Text>
                         {homeStanding?.strCurrentStreak && (
                             <Text color={homeStanding.strCurrentStreak.startsWith('W') ? 'green' : 'red'} bold>
@@ -420,11 +414,11 @@ function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game
                     <Box flexDirection="column" alignItems="center" marginY={1}>
                         <Text bold color="cyan">📈 Odds (Polymarket)</Text>
                         <Box marginTop={1} gap={2}>
-                            <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color="#ffffff"> {game.awayTeam.teamTricode} </Text>
+                            <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text>
                             <Text color="green" bold>{odds.awayOdds.toFixed(2)}</Text>
                             <Text dimColor>|</Text>
                             <Text color="green" bold>{odds.homeOdds.toFixed(2)}</Text>
-                            <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color="#ffffff"> {game.homeTeam.teamTricode} </Text>
+                            <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text>
                         </Box>
                     </Box>
                 </>
@@ -487,7 +481,7 @@ const BoxScoreTable = ({ teamName, teamTricode, players }: { teamName: string, t
         <Box flexDirection="column" marginRight={1} borderStyle="round" borderColor={teamBg} padding={1} flexShrink={1}>
             {/* Header with Team Color Background */}
             <Box marginBottom={1}>
-                <Text bold backgroundColor={teamBg} color="#ffffff"> {teamName} </Text>
+                <Text bold backgroundColor={teamBg} color={TEAM_TEXT_COLORS[teamTricode] || '#ffffff'}> {teamName} </Text>
                 <Text bold> TOP PERFORMERS</Text>
             </Box>
 
@@ -578,7 +572,7 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
                 {/* Away Team Row */}
                 <Box>
                     <Box width={7}>
-                        <Text bold backgroundColor={awayBg} color="#ffffff"> {awayTeam.teamTricode} </Text>
+                        <Text bold backgroundColor={awayBg} color={TEAM_TEXT_COLORS[awayTeam.teamTricode] || '#ffffff'}> {awayTeam.teamTricode} </Text>
                     </Box>
                     {Array.from({ length: maxPeriods }, (_, i) => (
                         <Box key={i} width={6} justifyContent="center">
@@ -595,7 +589,7 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
                 {/* Home Team Row */}
                 <Box>
                     <Box width={7}>
-                        <Text bold backgroundColor={homeBg} color="#ffffff"> {homeTeam.teamTricode} </Text>
+                        <Text bold backgroundColor={homeBg} color={TEAM_TEXT_COLORS[homeTeam.teamTricode] || '#ffffff'}> {homeTeam.teamTricode} </Text>
                     </Box>
                     {Array.from({ length: maxPeriods }, (_, i) => (
                         <Box key={i} width={6} justifyContent="center">
@@ -641,7 +635,6 @@ const StatBar = ({ leftVal, rightVal, leftColor, rightColor, barWidth = 26 }: { 
     const leftBars = Math.round(leftPct * barWidth);
     const rightBars = barWidth - leftBars;
 
-    // Use a single Text with nested Text elements for inline coloring
     return (
         <Text>
             <Text color={leftColor}>{'█'.repeat(leftBars)}</Text>
@@ -650,12 +643,58 @@ const StatBar = ({ leftVal, rightVal, leftColor, rightColor, barWidth = 26 }: { 
     );
 };
 
+// Color utility functions for collision detection
+function hexToRgb(hex: string): { r: number, g: number, b: number } | null {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result || !result[1] || !result[2] || !result[3]) return null;
+    return {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    };
+}
+
+function getColorDistance(hex1: string, hex2: string): number {
+    const rgb1 = hexToRgb(hex1);
+    const rgb2 = hexToRgb(hex2);
+    if (!rgb1 || !rgb2) return 1000; // Return huge distance if invalid
+
+    // Euclidean distance in RGB space
+    return Math.sqrt(
+        Math.pow(rgb1.r - rgb2.r, 2) +
+        Math.pow(rgb1.g - rgb2.g, 2) +
+        Math.pow(rgb1.b - rgb2.b, 2)
+    );
+}
+
 const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; homeTeam: TeamWithStats }) => {
     const awayStats = awayTeam.statistics || {};
     const homeStats = homeTeam.statistics || {};
 
     const awayBg = TEAM_BG_COLORS[awayTeam.teamTricode] || '#666';
     const homeBg = TEAM_BG_COLORS[homeTeam.teamTricode] || '#666';
+
+    let awayBarColor = awayBg;
+    let homeBarColor = homeBg;
+
+    // Intelligent Color Collision Detection for BARS only
+    // Threshold increased to 120 to catch dark-on-dark cases like DEN vs BKN
+    const COLLISION_THRESHOLD = 120;
+
+    if (getColorDistance(awayBarColor, homeBarColor) < COLLISION_THRESHOLD) {
+        // Strategy: Try swapping the Away team's BAR color to their TEXT color.
+        const awayText = TEAM_TEXT_COLORS[awayTeam.teamTricode] || '#ffffff';
+        if (getColorDistance(awayText, homeBarColor) > COLLISION_THRESHOLD) {
+            awayBarColor = awayText;
+        } else {
+            const homeText = TEAM_TEXT_COLORS[homeTeam.teamTricode] || '#ffffff';
+            if (getColorDistance(awayBarColor, homeText) > COLLISION_THRESHOLD) {
+                homeBarColor = homeText;
+            } else {
+                awayBarColor = '#CCCCCC';
+            }
+        }
+    }
 
     const formatPct = (pct: number | undefined) => pct !== undefined ? `${Math.round(pct * 100)}%` : '-';
     const formatShots = (made: number | undefined, att: number | undefined) =>
@@ -727,14 +766,14 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
                 <Text bold color="cyan">📊 Team Stats</Text>
             </Box>
 
-            {/* Team Codes */}
+            {/* Team Codes - USE ORIGINAL BG COLORS HERE */}
             <Box marginBottom={1}>
                 <Box width={sideWidth} justifyContent="flex-start">
-                    <Text bold backgroundColor={awayBg} color="#ffffff"> {awayTeam.teamTricode} </Text>
+                    <Text bold backgroundColor={awayBg} color={TEAM_TEXT_COLORS[awayTeam.teamTricode] || '#ffffff'}> {awayTeam.teamTricode} </Text>
                 </Box>
                 <Box width={barWidth} justifyContent="center" />
                 <Box width={sideWidth} justifyContent="flex-end">
-                    <Text bold backgroundColor={homeBg} color="#ffffff"> {homeTeam.teamTricode} </Text>
+                    <Text bold backgroundColor={homeBg} color={TEAM_TEXT_COLORS[homeTeam.teamTricode] || '#ffffff'}> {homeTeam.teamTricode} </Text>
                 </Box>
             </Box>
 
@@ -747,7 +786,7 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
                             <Text bold color={stat.awayVal >= stat.homeVal ? 'green' : 'white'}>{stat.awayDisplay}</Text>
                         </Box>
                         <Box width={barWidth} justifyContent="center">
-                            <StatBar leftVal={stat.awayVal} rightVal={stat.homeVal} leftColor={awayBg} rightColor={homeBg} barWidth={barWidth} />
+                            <StatBar leftVal={stat.awayVal} rightVal={stat.homeVal} leftColor={awayBarColor} rightColor={homeBarColor} barWidth={barWidth} />
                         </Box>
                         <Box width={sideWidth} justifyContent="flex-end">
                             <Text bold color={stat.homeVal >= stat.awayVal ? 'green' : 'white'}>{stat.homeDisplay}</Text>

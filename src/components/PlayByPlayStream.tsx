@@ -5,7 +5,7 @@
  */
 import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { TEAM_BG_COLORS } from '../data/teamColors.js';
+import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 
 export interface PlayByPlayAction {
     actionNumber: number;
@@ -280,7 +280,7 @@ export function PlayByPlayStream({
 
                                 {action.teamTricode ? (
                                     <Box>
-                                        <Text backgroundColor={teamBgColor} color="#ffffff" bold>
+                                        <Text backgroundColor={teamBgColor} color={TEAM_TEXT_COLORS[action.teamTricode] || '#ffffff'} bold>
                                             {' '}{action.teamTricode}{' '}
                                         </Text>
                                     </Box>
