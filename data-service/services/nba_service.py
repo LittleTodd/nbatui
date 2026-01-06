@@ -262,11 +262,11 @@ class NBAService:
             all_scheduled = all(g['gameStatus'] == 1 for g in games_list)
             
             if all_completed:
-                # Past date with all games finished - cache with scores
-                cache_service.cache_games(date_str, games_list)
+                # Past date with all games finished - cache with NBA date as key
+                cache_service.cache_games(nba_date_prev, games_list)
             elif all_scheduled:
-                # Future date - cache schedule (24h TTL)
-                cache_service.cache_schedule(date_str, games_list)
+                # Future date - cache schedule with NBA date as key (24h TTL)
+                cache_service.cache_schedule(nba_date_prev, games_list)
             # Don't cache if mixed statuses (today's games in progress)
             
             # Filter to only games matching the requested local date
