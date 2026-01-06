@@ -51,42 +51,67 @@ class NBAService:
             """Filter games to only include those matching the target local date"""
             return [g for g in games if g.get('localDate') == target_date]
         
-        # Check games_cache first (completed games with scores)
-        cached = cache_service.get_cached_games(date_str)
-        if cached is not None:
-            return ensure_local_date(cached)
+        # Calculate the NBA calendar date that corresponds to user's local date
+        # For timezones ahead of ET (e.g., UTC+8), local date X = NBA date X-1
+        # This is because NBA games at 7pm ET on Jan 5 are Jan 6 8am in Beijing
+        from datetime import datetime
+        is_today = date_str == get_local_today()
+        requested_dt = datetime.strptime(date_str, '%Y-%m-%d')
+        nba_date = (requested_dt - timedelta(days=1)).strftime('%Y-%m-%d')
         
-        # Check schedule_cache for future dates
-        schedule_cached = cache_service.get_cached_schedule(date_str)
+        # Check games_cache using NBA date (not user's local date)
+        # For TODAY, skip cache to use Live API for real-time updates
+        cached = cache_service.get_cached_games(nba_date)
+        if cached is not None and not is_today:
+            # Update localDate to user's requested date and return
+            for g in cached:
+                g['localDate'] = date_str
+            return cached
+        
+        # Check schedule_cache for future dates using NBA date
+        schedule_cached = cache_service.get_cached_schedule(nba_date)
         if schedule_cached is not None:
-            games = ensure_local_date(schedule_cached)
+            # Update localDate to user's requested date
+            for g in schedule_cached:
+                g['localDate'] = date_str
             
             # If it's today, skip cache to get live updates
-            is_today = date_str == get_local_today()
             if not is_today:
-                return games
+                return schedule_cached
 
-        # For today's date, try Live API first (faster and more reliable)
+        # For today's date, use Live API first as it has the most current game statuses
+        # Live API returns NBA's calendar games, but we use gameTimeUTC to determine
+        # which LOCAL date the games belong to
         is_today = date_str == get_local_today()
         if is_today:
             try:
-                live_games = self._fetch_today_games_via_live_api(date_str)
+                live_games, nba_game_date = self._fetch_today_games_via_live_api_with_date(date_str)
                 if live_games:
-                    # Add localDate and filter to only games matching requested date
+                    # Add localDate based on actual gameTimeUTC (not NBA date)
                     live_games = ensure_local_date(live_games)
+                    # Filter to only games that match the requested local date
                     filtered_games = filter_by_local_date(live_games, date_str)
                     if filtered_games:
-                        print(f"DEBUG: Live API returned {len(live_games)} games, {len(filtered_games)} match local date {date_str}")
+                        print(f"DEBUG: Live API (NBA date: {nba_game_date}) has {len(filtered_games)} games for local date {date_str}")
                         return filtered_games
-                    # If no games match, fall through to Stats API
+                    # If no games match user's local date, fall through to try previous NBA day
+                    print(f"DEBUG: Live API (NBA date: {nba_game_date}) has no games for local date {date_str}")
             except Exception as e:
                 print(f"DEBUG: Live API failed for today: {e}, falling back to Stats API")
-                pass
 
+        # For non-today dates or when Live API fails:
+        # User's local date X corresponds to NBA calendar date X-1 for timezones ahead of ET
+        # Example: User requests 2026-01-06 (Beijing time) -> need NBA's 2026-01-05 games
+        # because NBA Jan 5 games start at 7pm ET (Jan 6 8am Beijing)
+        
+        # Calculate the previous day (NBA calendar day that likely corresponds to requested local date)
+        requested_date = datetime.strptime(date_str, '%Y-%m-%d')
+        nba_date_prev = (requested_date - timedelta(days=1)).strftime('%Y-%m-%d')
+        
         try:
-            # Use scoreboardv2 for arbitrary dates
+            # Use scoreboardv2 for the PREVIOUS NBA calendar day
             from nba_api.stats.endpoints import scoreboardv2
-            board = scoreboardv2.ScoreboardV2(game_date=date_str)
+            board = scoreboardv2.ScoreboardV2(game_date=nba_date_prev)
             data = board.get_dict()
             
             # scoreboardv2 structure: resultSets[0] = GameHeader, resultSets[1] = LineScore
@@ -139,10 +164,14 @@ class NBAService:
                 game_status_id = row[h_map['GAME_STATUS_ID']] # 1=Scheduled, 2=In Progress, 3=Final
                 status_text = row[h_map['GAME_STATUS_TEXT']] 
                 
-                # Convert game date to local date
-                from .timezone_utils import utc_to_local_date
+                # NOTE: GAME_DATE_EST is the NBA's Eastern timezone date, NOT a UTC timestamp.
+                # Since we query scoreboardv2 with date_str (the user's requested local date),
+                # we use date_str directly as localDate. This works because:
+                # - When user requests their local date X, they expect NBA games from that date
+                # - scoreboardv2 returns games based on the NBA calendar date
                 game_date_et = row[h_map['GAME_DATE_EST']]
-                local_date = utc_to_local_date(game_date_et) if game_date_et else date_str
+                # Use the requested date as localDate for scoreboardv2 data
+                local_date = date_str
                 
                 games_map[game_id] = {
                     "gameId": game_id,
@@ -150,8 +179,8 @@ class NBAService:
                     "gameStatusText": status_text,
                     "period": 0,
                     "gameClock": "",
-                    "gameTimeUTC": game_date_et,
-                    "localDate": local_date,  # User's local date for this game
+                    "gameTimeUTC": game_date_et,  # Not actual UTC, but keep for compatibility
+                    "localDate": local_date,  # User's requested date
                     "homeTeam": {
                         **home_team,
                         "score": home_score
@@ -251,24 +280,22 @@ class NBAService:
                 return ensure_local_date(fallback)
             return []
     
-    def _fetch_today_games_via_live_api(self, date_str: str) -> list[dict[str, Any]]:
+    def _fetch_today_games_via_live_api_with_date(self, date_str: str) -> tuple[list[dict[str, Any]], str]:
         """
-        Fetch today's games using the lightweight Live API (CDN).
-        Returns None or empty list if failed/no games.
+        Fetch games using the Live API (CDN).
+        Returns a tuple of (games_list, nba_game_date).
+        
+        The nba_game_date is the date according to NBA's calendar (Eastern Time),
+        which may differ from the user's local date.
         """
         try:
             live_board = scoreboard.ScoreBoard()
             live_data = live_board.get_dict()
             
             if 'scoreboard' not in live_data or 'games' not in live_data['scoreboard']:
-                return []
+                return [], ""
             
-            if live_data['scoreboard'].get('gameDate') != date_str:
-                # API date mismatch (e.g. rolled over to next day already?)
-                # But usually get_nba_today() should match API logic. 
-                # If mismatch, maybe safer to fallback or just proceed if close enough?
-                # For now, trust the API data if it returns valid games.
-                pass
+            nba_game_date = live_data['scoreboard'].get('gameDate', '')
 
             games = live_data['scoreboard']['games']
             formatted_games = []
@@ -299,7 +326,7 @@ class NBAService:
                     }
                 })
                 
-            return formatted_games
+            return formatted_games, nba_game_date
         except Exception as e:
             print(f"Error parsing Live API: {e}")
             raise e
