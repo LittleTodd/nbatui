@@ -328,7 +328,7 @@ export function PlayByPlayStream({
 
             {/* Footer */}
             <Box marginTop={1} justifyContent="space-between">
-                <Text dimColor>Press [S] for Social Buzz</Text>
+                <Text dimColor> </Text>
                 {displayActions.length > maxItems && (
                     <Text dimColor>
                         [{scrollOffset + 1}-{Math.min(scrollOffset + maxItems, displayActions.length)}/{displayActions.length}] ↑↓

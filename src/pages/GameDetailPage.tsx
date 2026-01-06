@@ -172,11 +172,11 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
         if (key.escape || input === 'q' || key.backspace) {
             onBack();
         }
-        // Tab switching: P for Play-by-Play, S for Social
-        if (input === 'p' || input === 'P') {
+        // Tab switching: P/Left for Play-by-Play, S/Right for Social
+        if (input === 'p' || input === 'P' || key.leftArrow) {
             setActiveTab('playbyplay');
         }
-        if (input === 's' || input === 'S') {
+        if (input === 's' || input === 'S' || key.rightArrow) {
             setActiveTab('social');
         }
     });
@@ -302,7 +302,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
             </Box>
 
             <Box marginTop={0}>
-                <Text dimColor>Press Esc to go back</Text>
+                <Text dimColor>←/→: Switch Tab • Esc: Back</Text>
             </Box>
         </Box>
     );
