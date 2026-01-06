@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { getGameStatusInfo, type Game, type GameOdds } from '../services/apiClient.js';
 import { HeatIndicator } from './HeatIndicator.js';
+import { WinProbabilityBar } from './WinProbabilityBar.js';
+import { TEAM_BG_COLORS } from '../data/teamColors.js';
 import { type HeatData } from '../hooks/useSocialHeat.js';
 
 interface GameDetailProps {
@@ -11,6 +13,32 @@ interface GameDetailProps {
     currentIndex: number;
     totalGames: number;
     heat?: HeatData;
+}
+
+/**
+ * Determine game type based on date
+ * - Preseason: Before ~Oct 20
+ * - Regular Season: Oct 20 - mid April
+ * - Playoffs: mid April onwards
+ */
+function getGameTypeLabel(gameTimeUTC: string): { label: string; color: string } {
+    if (!gameTimeUTC) return { label: 'Regular Season', color: 'gray' };
+
+    const gameDate = new Date(gameTimeUTC);
+    const month = gameDate.getMonth(); // 0-indexed
+    const day = gameDate.getDate();
+
+    // October (month 9) before day 20 = Preseason
+    if (month === 9 && day < 20) {
+        return { label: '🏋️ Preseason', color: 'yellow' };
+    }
+
+    // April (month 3) after day 15, or May onwards = Playoffs
+    if ((month === 3 && day >= 15) || month >= 4) {
+        return { label: '🏆 Playoffs', color: 'magenta' };
+    }
+
+    return { label: '🏀 Regular Season', color: 'gray' };
 }
 
 // Selected game detail panel
@@ -28,10 +56,14 @@ export function GameDetail({ game, odds, currentIndex, totalGames, heat }: GameD
         return () => clearInterval(timer);
     }, [isLive]);
 
-    // Border color reacts to heat
-    let borderColor = 'cyan';
+    // Game type label
+    const { label: gameTypeLabel, color: gameTypeColor } = getGameTypeLabel(game.gameTimeUTC);
+
+    // Border color: use home team color, but heat overrides
+    let borderColor = TEAM_BG_COLORS[game.homeTeam.teamTricode] || 'cyan';
     if (heat?.level === 'fire') borderColor = 'red';
     else if (heat?.level === 'hot') borderColor = 'orange';
+
 
     return (
         <Box
@@ -43,11 +75,16 @@ export function GameDetail({ game, odds, currentIndex, totalGames, heat }: GameD
         >
             <Box flexDirection="column" alignItems="center">
                 {/* Pagination Indicator */}
-                <Box marginBottom={1}>
+                <Box marginBottom={0}>
                     <Text dimColor>◀ </Text>
                     <Text bold color="yellow">{currentIndex + 1}</Text>
                     <Text dimColor>/{totalGames}</Text>
                     <Text dimColor> ▶</Text>
+                </Box>
+
+                {/* Game Type Label */}
+                <Box marginBottom={1}>
+                    <Text dimColor color={gameTypeColor}>{gameTypeLabel}</Text>
                 </Box>
 
                 <Text bold color="cyan">
@@ -68,15 +105,15 @@ export function GameDetail({ game, odds, currentIndex, totalGames, heat }: GameD
                     </Box>
                 )}
 
-                {/* Show odds for future games */}
-                {isFuture && odds && odds.awayOdds > 0 && (
-                    <Box gap={1}>
-                        <Text color="yellow">📊 Odds:</Text>
-                        <Text color="white">{game.awayTeam.teamTricode}</Text>
-                        <Text color="green" bold>{odds.awayOdds.toFixed(2)}</Text>
-                        <Text color="gray">|</Text>
-                        <Text color="green" bold>{odds.homeOdds.toFixed(2)}</Text>
-                        <Text color="white">{game.homeTeam.teamTricode}</Text>
+                {/* Win Probability Bar for future games */}
+                {isFuture && odds && odds.homeProb > 0 && (
+                    <Box marginTop={1}>
+                        <WinProbabilityBar
+                            awayProb={odds.awayProb}
+                            homeProb={odds.homeProb}
+                            awayTricode={game.awayTeam.teamTricode}
+                            homeTricode={game.homeTeam.teamTricode}
+                        />
                     </Box>
                 )}
                 <Text color={isLive ? "green" : "gray"}>
