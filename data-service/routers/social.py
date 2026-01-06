@@ -51,6 +51,10 @@ def get_game_heat(
         if cached:
             return cached
 
+    # 1b. Skip Reddit for Scheduled games - no Game Thread exists yet
+    if status == 1:
+        return {"count": 0, "level": "cold", "trending": False, "message": "Game not started"}
+
     # 2. Check Memory Cache (for all games)
     mem_key = f"heat_{team1}_{team2}"
     cached = get_from_mem_cache(mem_key)
@@ -127,6 +131,10 @@ def get_game_tweets(
         cached = cache_service.get_cached_social(db_key)
         if cached:
             return cached
+
+    # 1b. Skip Reddit for Scheduled games - no Game Thread exists yet
+    if status == 1:
+        return {"tweets": []}
 
     # 2. Check Memory Cache
     mem_key = f"comments_{team1}_{team2}_{limit}"

@@ -56,6 +56,13 @@ def _get_connection() -> sqlite3.Connection:
             cached_at TEXT NOT NULL
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS standings_cache (
+            id TEXT PRIMARY KEY DEFAULT 'current',
+            data TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        )
+    ''')
     conn.commit()
     return conn
 
@@ -371,3 +378,97 @@ def is_schedule_cached(date: str) -> bool:
     Check if a date has valid (non-stale) schedule cache.
     """
     return get_cached_schedule(date) is not None
+
+
+def get_cached_schedule_fallback(date: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Get cached schedule even if stale.
+    Used as fallback when NBA API fails.
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT data FROM schedule_cache WHERE date = ?',
+            (date,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return json.loads(row[0])
+        return None
+    except Exception:
+        return None
+
+
+# ==================== STANDINGS CACHE ====================
+
+STANDINGS_CACHE_TTL_HOURS = 6  # Refresh standings cache every 6 hours
+
+
+def cache_standings(data: List[Dict[str, Any]]) -> None:
+    """
+    Cache league standings data.
+    
+    Args:
+        data: List of team standings dictionaries
+    """
+    if not data:
+        return
+    
+    try:
+        conn = _get_connection()
+        conn.execute(
+            'INSERT OR REPLACE INTO standings_cache (id, data, cached_at) VALUES (?, ?, ?)',
+            ('current', json.dumps(data), datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def get_cached_standings() -> Optional[List[Dict[str, Any]]]:
+    """
+    Get cached standings data.
+    Returns None if not cached or if cache is stale (>6h old).
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT data, cached_at FROM standings_cache WHERE id = ?',
+            ('current',)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            cached_at = datetime.fromisoformat(row[1])
+            # Check if cache is stale
+            if datetime.now() - cached_at > timedelta(hours=STANDINGS_CACHE_TTL_HOURS):
+                return None  # Cache expired, need fresh data
+            return json.loads(row[0])
+        return None
+    except Exception:
+        return None
+
+
+def get_cached_standings_fallback() -> Optional[List[Dict[str, Any]]]:
+    """
+    Get cached standings data even if stale.
+    Used as fallback when live API fails.
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT data FROM standings_cache WHERE id = ?',
+            ('current',)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return json.loads(row[0])
+        return None
+    except Exception:
+        return None

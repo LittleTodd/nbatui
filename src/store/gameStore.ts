@@ -32,16 +32,7 @@ interface GameState {
 export const useGameStore = create<GameState>((set, get) => ({
     games: [],
     odds: {},
-    currentDate: (() => {
-        // Precise initialization: Default to "NBA Today" (ET based)
-        // If it's morning in Asia/Europe (before 11:00 UTC), it's still the previous game day
-        const now = new Date();
-        const utcHour = now.getUTCHours();
-        if (utcHour < 11) {
-            return subDays(now, 1);
-        }
-        return now;
-    })(),
+    currentDate: new Date(), // Use local date; loadGamesForDate handles ET timezone conversion
     selectedIndex: 0,
     connected: false,
     loading: true,
@@ -175,7 +166,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     setSocialHeat: (heatMap: Record<string, HeatData>) => set({ socialHeat: heatMap }),
 
-    // Fetch heat for all current games (in parallel)
+    // Fetch heat for current games (with rate limiting to avoid Reddit 429)
     fetchHeatForGames: async () => {
         const { games } = get();
         if (games.length === 0) return;
@@ -184,28 +175,36 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         const heatMap: Record<string, HeatData> = {};
 
-        // Use Promise.all to fetch in parallel
-        await Promise.all(games.map(async (game) => {
-            // Skip old games (simple 6 month check here or rely on backend return empty)
-            // Backend handles 6 month check now, returns empty/cold.
-            // But we can skip fetch if we want to save bandwidth.
-            // Let's just fetch, backend is fast with cache.
+        // Fetch sequentially with delay to avoid Reddit rate limiting (429)
+        // Limit to first 3 games for map overview heat display
+        const gamesToFetch = games.slice(0, 3);
+
+        for (const game of gamesToFetch) {
+            // Skip scheduled games - no Reddit Game Thread exists yet
+            if (game.gameStatus === 1) continue;
+
             const gameDateStr = game.gameTimeUTC?.slice(0, 10);
-            if (!gameDateStr) return;
+            if (!gameDateStr) continue;
 
-            const heat = await fetchGameHeat(
-                game.awayTeam.teamTricode,
-                game.homeTeam.teamTricode,
-                game.gameStatus,
-                gameDateStr,
-                game.gameId
-            );
+            try {
+                const heat = await fetchGameHeat(
+                    game.awayTeam.teamName,
+                    game.homeTeam.teamName,
+                    game.gameStatus,
+                    gameDateStr,
+                    game.gameId
+                );
 
-            if (heat) {
-                // Determine level if not provided by backend (backend provides it)
-                heatMap[game.gameId] = heat;
+                if (heat) {
+                    heatMap[game.gameId] = heat;
+                }
+            } catch {
+                // Silently skip on error
             }
-        }));
+
+            // Small delay between requests to respect Reddit rate limits
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
 
         set({ socialHeat: heatMap });
     },

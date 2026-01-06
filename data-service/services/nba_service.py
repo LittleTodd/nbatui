@@ -226,8 +226,13 @@ class NBAService:
             # Don't cache if mixed statuses (today's games in progress)
             
             return games_list
-        except Exception:
-            # Silently fail
+        except Exception as e:
+            # API failed - try to use stale schedule cache as fallback
+            print(f"[NBA API] Failed for {date_str}: {e}, trying fallback cache", flush=True)
+            fallback = cache_service.get_cached_schedule_fallback(date_str)
+            if fallback:
+                print(f"[NBA API] Using fallback cache for {date_str}: {len(fallback)} games", flush=True)
+                return ensure_local_date(fallback)
             return []
     
     def _merge_live_scores(self, games_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -363,8 +368,14 @@ class NBAService:
 
     def get_standings(self) -> list[dict[str, Any]]:
         """
-        Get current league standings
+        Get current league standings with caching.
+        Uses 6-hour cache TTL and falls back to stale cache if API fails.
         """
+        # Check cache first
+        cached = cache_service.get_cached_standings()
+        if cached is not None:
+            return cached
+        
         try:
             ls = leaguestandings.LeagueStandings()
             data = ls.get_dict()
@@ -378,9 +389,20 @@ class NBAService:
                 for row in row_set:
                     team_data = dict(zip(headers, row))
                     standings.append(team_data)
+                
+                # Cache the successful result
+                if standings:
+                    cache_service.cache_standings(standings)
+                
                 return standings
             return []
-        except Exception:
+        except Exception as e:
+            # API failed, try stale cache as fallback
+            print(f"[Standings] API failed: {e}, trying fallback cache", flush=True)
+            fallback = cache_service.get_cached_standings_fallback()
+            if fallback:
+                print(f"[Standings] Using fallback cache with {len(fallback)} teams", flush=True)
+                return fallback
             return []
 
     

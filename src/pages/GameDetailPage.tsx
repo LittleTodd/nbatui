@@ -60,7 +60,8 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
             }
         }
 
-        if (!skipSocial) {
+        // Skip social data for scheduled games (status=1) - no Reddit thread exists
+        if (!skipSocial && game.gameStatus !== 1) {
             Promise.all([
                 fetchGameHeat(team1, team2, game.gameStatus, gameDateStr, game.gameId),
                 fetchGameTweets(team1, team2, game.gameStatus, gameDateStr, game.gameId)
