@@ -4,6 +4,8 @@
 
 ![Terminal](https://img.shields.io/badge/Terminal-TUI-green) ![React](https://img.shields.io/badge/React-Ink-blue) ![Python](https://img.shields.io/badge/Python-FastAPI-yellow)
 
+![Screenshot](/src/gif/screenshot.png)
+
 ---
 
 ## 功能 | Features
