@@ -53,29 +53,17 @@ export const useGameStore = create<GameState>((set, get) => ({
             set({ loading: true });
         }
 
-        // Precise Calculation: Map "Local Day" to "NBA Day"
-        // We take the Midnight of the selected Local Date, and see what date it is in ET (New York).
-        // This handles all timezones (Asia, Europe, etc.) accurately.
+        // Use local date directly - backend handles timezone conversion
+        // Format: YYYY-MM-DD in user's local timezone
+        const localDateStr = format(date, 'yyyy-MM-dd');
 
-        // 1. Get timestamp of Local Midnight
-        const localMidnight = new Date(date);
-        localMidnight.setHours(0, 0, 0, 0);
-
-        // 2. Format to ET Date String (YYYY-MM-DD)
-        const etDateStr = new Intl.DateTimeFormat('en-CA', {
-            timeZone: 'America/New_York',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        }).format(localMidnight);
-
-        // Check if the date is DEEP in the past (using local date relative to now)
+        // Check if the date is in the past (skip odds for past dates)
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const startOfYesterday = subDays(startOfToday, 1);
         const isPastDate = date.getTime() < startOfYesterday.getTime();
 
-        const gamesPromise = fetchGamesByDate(etDateStr);
+        const gamesPromise = fetchGamesByDate(localDateStr);
 
         let gamesData: Game[] = [];
         let oddsData: Record<string, GameOdds> = {};

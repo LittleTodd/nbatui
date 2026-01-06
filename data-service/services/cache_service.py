@@ -325,7 +325,7 @@ def get_game_end_time(game_id: str) -> Optional[datetime]:
 
 # ==================== SCHEDULE CACHE (Future Games) ====================
 
-SCHEDULE_CACHE_TTL_HOURS = 24  # Refresh schedule cache every 24 hours
+SCHEDULE_CACHE_TTL_HOURS = 48  # Refresh schedule cache every 48 hours
 
 
 def cache_schedule(date: str, games: List[Dict[str, Any]]) -> None:
@@ -352,6 +352,7 @@ def get_cached_schedule(date: str) -> Optional[List[Dict[str, Any]]]:
     """
     Get cached schedule for a future date.
     Returns None if not cached or if cache is stale (>24h old).
+    Also returns None if it's a past date with only scheduled games (stale data).
     """
     try:
         conn = _get_connection()
@@ -364,10 +365,22 @@ def get_cached_schedule(date: str) -> Optional[List[Dict[str, Any]]]:
         
         if row:
             cached_at = datetime.fromisoformat(row[1])
-            # Check if cache is stale
+            # Check if cache is stale by TTL
             if datetime.now() - cached_at > timedelta(hours=SCHEDULE_CACHE_TTL_HOURS):
                 return None  # Cache expired, need fresh data
-            return json.loads(row[0])
+            
+            games = json.loads(row[0])
+            
+            # Check for stale scheduled data: past date with all games still "scheduled"
+            from .timezone_utils import get_nba_today
+            nba_today = get_nba_today()
+            if date < nba_today:
+                # Past date - check if games are still showing as scheduled (stale)
+                all_scheduled = all(g.get('gameStatus') == 1 for g in games)
+                if all_scheduled and games:
+                    return None  # Stale cache - games should be completed by now
+            
+            return games
         return None
     except Exception:
         return None

@@ -1,147 +1,116 @@
 """
-Timezone Utilities
-Converts NBA API times (US Eastern) to user's local timezone.
-This ensures all dates used throughout the app are consistent.
+Timezone Utilities - Simplified Version
+All conversions are to user's LOCAL timezone.
+Uses system timezone which automatically handles DST.
 """
-from datetime import datetime, timedelta, timezone
-import time
-
-
-def get_local_utc_offset_hours() -> float:
-    """
-    Get the local timezone's UTC offset in hours.
-    Positive for east of UTC (e.g., +8 for Beijing).
-    """
-    # time.timezone gives offset west of UTC in seconds (negative for east)
-    # time.daylight indicates if DST is currently active
-    if time.daylight and time.localtime().tm_isdst > 0:
-        offset_seconds = -time.altzone
-    else:
-        offset_seconds = -time.timezone
-    return offset_seconds / 3600
+from datetime import datetime, timezone
 
 
 def get_local_today() -> str:
     """
-    Get today's date in the local timezone.
+    Get today's date in the user's local timezone.
     Returns YYYY-MM-DD format.
     """
     return datetime.now().strftime('%Y-%m-%d')
 
 
-def get_nba_today() -> str:
-    """
-    Get the current NBA 'Game Day' date (YYYY-MM-DD).
-    NBA day logic: If currently before 11:00 AM UTC (which is 6:00 AM EST / 7:00 AM EDT),
-    consider it part of the previous day's schedule.
-    This ensures that users in Asia/Europe checking in the morning see the ongoing/just-finished games
-    instead of the empty schedule for the next day.
-    """
-    utc_now = datetime.now(timezone.utc)
-    
-    # Threshold: 11:00 UTC (6 AM EST / 7 AM EDT)
-    # This covers West Coast games ending late
-    cutoff_hour = 11 
-    
-    if utc_now.hour < cutoff_hour:
-        nba_today = utc_now - timedelta(days=1)
-    else:
-        nba_today = utc_now
-        
-    return nba_today.strftime('%Y-%m-%d')
-
-
-def convert_utc_to_local(utc_datetime_str: str) -> datetime:
+def utc_to_local_datetime(utc_str: str) -> datetime:
     """
     Convert a UTC datetime string to local datetime.
     Handles formats like:
-    - "2026-01-04T00:00:00Z"
-    - "2026-01-04T00:00:00"
-    - "2026-01-04"
-    """
-    if not utc_datetime_str:
-        return datetime.now()
+    - "2026-01-06T03:00:00Z"
+    - "2026-01-06T03:00:00"
+    - "2026-01-06"
     
-    # Clean up the string
-    utc_datetime_str = utc_datetime_str.replace('Z', '')
+    Automatically handles DST via system timezone.
+    """
+    if not utc_str:
+        return datetime.now()
     
     try:
-        if 'T' in utc_datetime_str:
-            utc_dt = datetime.fromisoformat(utc_datetime_str)
+        # Clean up the string and parse
+        clean_str = utc_str.replace('Z', '+00:00')
+        
+        if 'T' in clean_str:
+            # Full datetime
+            if '+' not in clean_str and '-' not in clean_str[10:]:
+                # No timezone info, assume UTC
+                clean_str += '+00:00'
+            utc_dt = datetime.fromisoformat(clean_str)
         else:
-            utc_dt = datetime.strptime(utc_datetime_str, '%Y-%m-%d')
-    except ValueError:
-        # Fallback to now if parsing fails
+            # Date only - assume midnight UTC
+            utc_dt = datetime.fromisoformat(clean_str + 'T00:00:00+00:00')
+        
+        # Convert to local timezone (automatically handles DST)
+        local_dt = utc_dt.astimezone()
+        return local_dt
+    except (ValueError, TypeError):
         return datetime.now()
-    
-    # Add local offset
-    offset_hours = get_local_utc_offset_hours()
-    local_dt = utc_dt + timedelta(hours=offset_hours)
-    
-    return local_dt
 
 
-def convert_utc_to_local_date(utc_datetime_str: str) -> str:
+def utc_to_local_date(utc_str: str) -> str:
     """
     Convert a UTC datetime string to local date string (YYYY-MM-DD).
-    This is the primary function used for cache keys.
+    This is the PRIMARY function for determining which "local day" a game belongs to.
+    
+    Example:
+    - "2026-01-06T03:00:00Z" in Beijing (UTC+8) → "2026-01-06" (11:00 AM local)
+    - "2026-01-07T02:00:00Z" in Beijing (UTC+8) → "2026-01-07" (10:00 AM local)
     """
-    local_dt = convert_utc_to_local(utc_datetime_str)
+    local_dt = utc_to_local_datetime(utc_str)
     return local_dt.strftime('%Y-%m-%d')
 
 
-def convert_et_to_local(et_datetime_str: str) -> datetime:
+def utc_to_local_time(utc_str: str) -> str:
     """
-    Convert an Eastern Time datetime string to local datetime.
-    ET is typically UTC-5 (EST) or UTC-4 (EDT).
-    For simplicity, we use UTC-5.
+    Convert a UTC datetime string to local time string (HH:MM AM/PM format).
     
-    For date-only strings OR midnight timestamps (T00:00:00), we assume 
-    late evening (10 PM ET) since NBA games typically occur then.
+    Example:
+    - "2026-01-06T03:00:00Z" in Beijing (UTC+8) → "11:00 AM"
     """
-    if not et_datetime_str:
-        return datetime.now()
-    
-    try:
-        if 'T' in et_datetime_str:
-            et_dt = datetime.fromisoformat(et_datetime_str.replace('Z', ''))
-            # If it's midnight (T00:00:00), treat as evening game (10 PM)
-            # NBA API often stores just the date with midnight time
-            if et_dt.hour == 0 and et_dt.minute == 0 and et_dt.second == 0:
-                et_dt = et_dt.replace(hour=22)  # 10 PM ET
-        else:
-            # For date-only, assume 10 PM ET (when most games are in progress)
-            et_dt = datetime.strptime(et_datetime_str + " 22:00:00", '%Y-%m-%d %H:%M:%S')
-    except ValueError:
-        return datetime.now()
-    
-    # ET to UTC: add 5 hours (EST = UTC-5)
-    utc_dt = et_dt + timedelta(hours=5)
-    
-    # UTC to local
-    offset_hours = get_local_utc_offset_hours()
-    local_dt = utc_dt + timedelta(hours=offset_hours)
-    
-    return local_dt
+    local_dt = utc_to_local_datetime(utc_str)
+    return local_dt.strftime('%I:%M %p').lstrip('0')
 
 
-def convert_et_to_local_date(et_datetime_str: str) -> str:
+# Legacy function - now just returns local today
+# Kept for backward compatibility during migration
+def get_nba_today() -> str:
     """
-    Convert an Eastern Time datetime string to local date string (YYYY-MM-DD).
-    NBA API often uses ET for game dates.
+    DEPRECATED: Use get_local_today() instead.
+    Now just returns the local date.
     """
-    local_dt = convert_et_to_local(et_datetime_str)
-    return local_dt.strftime('%Y-%m-%d')
+    return get_local_today()
 
 
-# For debugging
+# Legacy function - kept for backward compatibility
+def convert_et_to_local_date(datetime_str: str) -> str:
+    """
+    DEPRECATED: Use utc_to_local_date() instead.
+    
+    This function previously tried to convert ET to local,
+    but the input is actually UTC from NBA API, so we now
+    just delegate to utc_to_local_date.
+    """
+    return utc_to_local_date(datetime_str)
+
+
+# For debugging and testing
 if __name__ == "__main__":
-    print(f"Local UTC offset: {get_local_utc_offset_hours()} hours")
     print(f"Local today: {get_local_today()}")
     
-    # Test conversion
-    test_et = "2026-01-04"
-    print(f"ET date '{test_et}' -> Local date: {convert_et_to_local_date(test_et)}")
+    # Test conversions for different timezones
+    test_cases = [
+        ("2026-01-06T03:00:00Z", "Typical NBA game (UTC 3 AM)"),
+        ("2026-01-07T01:30:00Z", "Late game (UTC 1:30 AM)"),
+        ("2026-01-06T00:00:00Z", "Midnight UTC"),
+        ("2026-01-06", "Date only"),
+    ]
     
-    test_utc = "2026-01-04T02:00:00Z"
-    print(f"UTC '{test_utc}' -> Local date: {convert_utc_to_local_date(test_utc)}")
+    print("\nTest conversions (in your local timezone):")
+    for utc_str, description in test_cases:
+        local_date = utc_to_local_date(utc_str)
+        local_time = utc_to_local_time(utc_str)
+        print(f"  {description}")
+        print(f"    UTC: {utc_str}")
+        print(f"    Local: {local_date} {local_time}")
+        print()
