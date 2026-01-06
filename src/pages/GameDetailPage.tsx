@@ -678,8 +678,8 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
     let homeBarColor = homeBg;
 
     // Intelligent Color Collision Detection for BARS only
-    // Threshold increased to 120 to catch dark-on-dark cases like DEN vs BKN
-    const COLLISION_THRESHOLD = 120;
+    // Threshold increased to 80 to catch dark-on-dark cases like DEN vs BKN
+    const COLLISION_THRESHOLD = 80;
 
     if (getColorDistance(awayBarColor, homeBarColor) < COLLISION_THRESHOLD) {
         // Strategy: Try swapping the Away team's BAR color to their TEXT color.

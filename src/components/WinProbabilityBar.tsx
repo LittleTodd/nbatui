@@ -37,8 +37,8 @@ export function WinProbabilityBar({
     let awayBarColor = awayBg;
     let homeBarColor = homeBg;
 
-    // Threshold increased to 120 to catch dark-on-dark cases
-    const COLLISION_THRESHOLD = 120;
+    // Threshold increased to 80 to catch dark-on-dark cases
+    const COLLISION_THRESHOLD = 80;
 
     if (getColorDistance(awayBarColor, homeBarColor) < COLLISION_THRESHOLD) {
         const awayText = TEAM_TEXT_COLORS[awayTricode] || '#ffffff';
