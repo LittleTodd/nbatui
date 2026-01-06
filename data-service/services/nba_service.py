@@ -18,12 +18,12 @@ class NBAService:
     def get_today_games(self) -> list[dict[str, Any]]:
         """
         Get all games scheduled for 'NBA Today'.
-        Uses the user's local timezone to determine today's date.
+        Uses get_nba_today() to determine the current game day (ET based).
         """
-        from .timezone_utils import get_local_today
+        from .timezone_utils import get_nba_today
         
-        # Get today's date in user's local timezone
-        today_str = get_local_today()
+        # Get today's date based on NBA logic (ET)
+        today_str = get_nba_today()
         
         return self.get_games_by_date(today_str)
 
@@ -52,7 +52,19 @@ class NBAService:
         # Check schedule_cache for future dates
         schedule_cached = cache_service.get_cached_schedule(date_str)
         if schedule_cached is not None:
-            return ensure_local_date(schedule_cached)
+            games = ensure_local_date(schedule_cached)
+            
+            # Check for live updates if it's today, even if cached as scheduled
+            from .timezone_utils import get_local_today, get_nba_today
+            is_today = date_str == get_local_today() or date_str == get_nba_today()
+            
+            if is_today:
+                try:
+                    games = self._merge_live_scores(games)
+                except Exception:
+                    pass
+            
+            return games
         
         try:
             # Use scoreboardv2 for arbitrary dates
@@ -183,12 +195,22 @@ class NBAService:
             # Cache the results if all games are completed
             games_list = list(games_map.values())
             
-            # HYBRID APPROACH: If any game is LIVE (gameStatus=2), use Live API for real-time scores
+            # HYBRID APPROACH: If any game is LIVE (gameStatus=2) OR it is today, use Live API for real-time scores
+            # We check "today" because Stats API (scoreboardv2) might lag and show Status 1 when games nicely started
+            from .timezone_utils import get_local_today, get_nba_today
+            is_today = date_str == get_local_today() or date_str == get_nba_today()
+            
             has_live_games = any(g['gameStatus'] == 2 for g in games_list)
-            if has_live_games:
+            
+            if has_live_games or is_today:
                 try:
+                    print(f"DEBUG: Attempting to merge live scores. is_today={is_today}")
                     games_list = self._merge_live_scores(games_list)
-                except Exception:
+                    print(f"DEBUG: Merge successful. Games count: {len(games_list)}")
+                except Exception as e:
+                    print(f"DEBUG: Merge failed: {e}")
+                    import traceback
+                    traceback.print_exc()
                     pass  # If Live API fails, keep Stats API data
             
             # Determine caching strategy based on game statuses

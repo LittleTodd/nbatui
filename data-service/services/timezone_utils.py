@@ -29,6 +29,28 @@ def get_local_today() -> str:
     return datetime.now().strftime('%Y-%m-%d')
 
 
+def get_nba_today() -> str:
+    """
+    Get the current NBA 'Game Day' date (YYYY-MM-DD).
+    NBA day logic: If currently before 11:00 AM UTC (which is 6:00 AM EST / 7:00 AM EDT),
+    consider it part of the previous day's schedule.
+    This ensures that users in Asia/Europe checking in the morning see the ongoing/just-finished games
+    instead of the empty schedule for the next day.
+    """
+    utc_now = datetime.now(timezone.utc)
+    
+    # Threshold: 11:00 UTC (6 AM EST / 7 AM EDT)
+    # This covers West Coast games ending late
+    cutoff_hour = 11 
+    
+    if utc_now.hour < cutoff_hour:
+        nba_today = utc_now - timedelta(days=1)
+    else:
+        nba_today = utc_now
+        
+    return nba_today.strftime('%Y-%m-%d')
+
+
 def convert_utc_to_local(utc_datetime_str: str) -> datetime:
     """
     Convert a UTC datetime string to local datetime.

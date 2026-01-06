@@ -32,7 +32,16 @@ interface GameState {
 export const useGameStore = create<GameState>((set, get) => ({
     games: [],
     odds: {},
-    currentDate: new Date(),
+    currentDate: (() => {
+        // Precise initialization: Default to "NBA Today" (ET based)
+        // If it's morning in Asia/Europe (before 11:00 UTC), it's still the previous game day
+        const now = new Date();
+        const utcHour = now.getUTCHours();
+        if (utcHour < 11) {
+            return subDays(now, 1);
+        }
+        return now;
+    })(),
     selectedIndex: 0,
     connected: false,
     loading: true,
