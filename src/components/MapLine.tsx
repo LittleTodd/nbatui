@@ -176,6 +176,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
                     color={finalColor}
                     backgroundColor={finalBg}
                     bold={finalBold}
+                    dimColor={finalDim}
                 >
                     {text}
                 </Text>
