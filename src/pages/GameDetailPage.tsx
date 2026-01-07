@@ -305,9 +305,8 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 )}
             </Box>
 
-            <Box marginTop={0}>
-                <Text dimColor>Press Esc to go back</Text>
-            </Box>
+            {/* Footer - acts as bottom spacing (replaces paddingBottom) */}
+            <Text color="magenta">[Esc] 🏠 Return to Main Menu</Text>
         </Box>
     );
 }

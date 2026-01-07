@@ -199,6 +199,27 @@ export function PlayByPlayStream({
     const homeColor = TEAM_BG_COLORS[homeTricode] || '#444444';
     const awayColor = TEAM_BG_COLORS[awayTricode] || '#666666';
 
+    const finalResultMsg = useMemo(() => {
+        if (isLive) return '';
+
+        const hasScore = homeScore !== undefined && awayScore !== undefined;
+        if (!hasScore) return '';
+
+        const winnerName = homeScore > awayScore ? (homeName || homeTricode) : (awayName || awayTricode);
+        const loserName = homeScore > awayScore ? (awayName || awayTricode) : (homeName || homeTricode);
+
+        // Randomly choose between victory or defeat message
+        const useVictory = Math.random() > 0.5;
+        if (useVictory && winnerName) {
+            const template = VICTORY_TEMPLATES[Math.floor(Math.random() * VICTORY_TEMPLATES.length)];
+            return template ? template(winnerName) : '';
+        } else if (loserName) {
+            const template = DEFEAT_TEMPLATES[Math.floor(Math.random() * DEFEAT_TEMPLATES.length)];
+            return template ? template(loserName) : '';
+        }
+        return '';
+    }, [isLive, homeScore, awayScore, homeName, homeTricode, awayName, awayTricode]);
+
     return (
         <Box flexDirection="column">
             {/* Header */}
@@ -207,42 +228,17 @@ export function PlayByPlayStream({
             {/* Event Stream */}
             <Box flexDirection="column">
                 {/* Game End indicator - shows first since it's chronologically last */}
-                {!isLive && displayActions.length > 0 && (() => {
-                    const hasScore = homeScore !== undefined && awayScore !== undefined;
-                    // Use nicknames for messages, fallback to tricode
-                    const winnerName = hasScore
-                        ? (homeScore > awayScore ? (homeName || homeTricode) : (awayName || awayTricode))
-                        : null;
-                    const loserName = hasScore
-                        ? (homeScore > awayScore ? (awayName || awayTricode) : (homeName || homeTricode))
-                        : null;
-
-                    // Randomly choose between victory or defeat message
-                    const useVictory = Math.random() > 0.5;
-                    let resultMsg = '';
-                    if (useVictory && winnerName) {
-                        const template = VICTORY_TEMPLATES[Math.floor(Math.random() * VICTORY_TEMPLATES.length)];
-                        resultMsg = template ? template(winnerName) : '';
-                    } else if (loserName) {
-                        const template = DEFEAT_TEMPLATES[Math.floor(Math.random() * DEFEAT_TEMPLATES.length)];
-                        resultMsg = template ? template(loserName) : '';
-                    }
-
-                    return (
-                        <Box>
-                            <Text dimColor>[Q4 00:00]</Text>
-                            <Text> </Text>
-                            <Text bold color="yellow">🏀 FINAL</Text>
-                            {hasScore && (
-                                <>
-                                    <Text bold color="white"> {awayScore}-{homeScore}</Text>
-                                    <Text>, </Text>
-                                    <Text color="cyan">{resultMsg}</Text>
-                                </>
-                            )}
-                        </Box>
-                    );
-                })()}
+                {/* Game End indicator - shows first since it's chronologically last */}
+                {!isLive && displayActions.length > 0 && finalResultMsg && (
+                    <Box>
+                        <Text dimColor>[Q4 00:00]</Text>
+                        <Text> </Text>
+                        <Text bold color="yellow">🏀 FINAL</Text>
+                        <Text bold color="white"> {awayScore}-{homeScore}</Text>
+                        <Text>, </Text>
+                        <Text color="cyan">{finalResultMsg}</Text>
+                    </Box>
+                )}
                 {visibleActions.map((action, idx) => {
                     const isHomeTeam = action.teamTricode === homeTricode;
                     const teamBgColor = action.teamTricode
@@ -299,7 +295,7 @@ export function PlayByPlayStream({
                                     </Box>
                                 ) : (
                                     <>
-                                        <Text color={descColor}>{action.description}</Text>
+                                        <Text color={descColor} wrap="truncate-end">{action.description}</Text>
                                         {action.shotResult === 'Made' && action.actionType === '3pt' && (
                                             <Text color="green" bold> +3</Text>
                                         )}
@@ -322,13 +318,14 @@ export function PlayByPlayStream({
                 })}
             </Box>
 
-            {/* Footer */}
-            <Box marginTop={1} justifyContent="space-between">
-
-                {displayActions.length > maxItems && (
+            {/* Footer - always maintain same height for layout stability */}
+            <Box marginTop={1} justifyContent="space-between" height={1}>
+                {displayActions.length > maxItems ? (
                     <Text dimColor>
                         [{scrollOffset + 1}-{Math.min(scrollOffset + maxItems, displayActions.length)}/{displayActions.length}] ↑↓
                     </Text>
+                ) : (
+                    <Text> </Text>
                 )}
             </Box>
         </Box>
