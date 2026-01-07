@@ -140,8 +140,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
             let finalDim = isFuture && !marker.isHighlighted && !marker.isSelected;
 
             if (marker.isHighlighted) {
-                finalBg = 'yellow';
-                finalColor = 'black';
+                finalColor = TEAM_TEXT_COLORS[teamCode] || '#ffffff';
                 finalBold = true;
                 finalDim = false;
             } else if (bg && teamCode) {
@@ -176,6 +175,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
                     color={finalColor}
                     backgroundColor={finalBg}
                     bold={finalBold}
+                    dimColor={finalDim}
                 >
                     {text}
                 </Text>
