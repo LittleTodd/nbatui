@@ -61,6 +61,15 @@ function App() {
         return () => clearInterval(timer);
     }, [games]);
 
+    // Wave animation state for coastal terrain effect
+    const [waveFrame, setWaveFrame] = useState(0);
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setWaveFrame(f => (f + 1) % 4);
+        }, 1000);  // Slower wave animation
+        return () => clearInterval(timer);
+    }, []);
+
     // Initial Load & Connection Check
     useEffect(() => {
         loadGamesForDate(currentDate);
@@ -238,6 +247,7 @@ function App() {
                                 games={games}
                                 odds={odds}
                                 liveDotVisible={liveDotVisible}
+                                waveFrame={waveFrame}
                             />
                         ))
                     )}

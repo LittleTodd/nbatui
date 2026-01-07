@@ -5,6 +5,8 @@ import type { HeatData } from '../hooks/useSocialHeat.js';
 import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { createGameMarker, type GameColor } from '../utils/mapRendering.js';
 import { getOddsKey as fetchOddsKey } from '../services/apiClient.js';
+import { US_MAP_WIDTH, US_MAP_HEIGHT } from '../data/usMap.js';
+import { getTerrainRegion, getTerrainColor, getTerrainChar } from '../data/mapTerrain.js';
 
 interface MapLineProps {
     line: string;
@@ -13,9 +15,10 @@ interface MapLineProps {
     games: Game[];
     odds: Record<string, GameOdds>;
     liveDotVisible: boolean;
+    waveFrame?: number;  // Animation frame for wave effect (0-3)
 }
 
-function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisible }: MapLineProps) {
+function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisible, waveFrame = 0 }: MapLineProps) {
     const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string; heat?: HeatData; isCrunchTime?: boolean }> = [];
 
     gameColors.forEach((pos, gameIdx) => {
@@ -47,8 +50,56 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
         }
     });
 
+    // Helper to render a segment with terrain colors
+    const renderTerrainSegment = (text: string, startCol: number, key: string): React.ReactNode[] => {
+        const nodes: React.ReactNode[] = [];
+        let currentRegion = getTerrainRegion(startCol, US_MAP_WIDTH, rowIndex, US_MAP_HEIGHT);
+        let currentColor = getTerrainColor(currentRegion);
+        let buffer = '';
+        let bufferStart = startCol;
+
+        for (let i = 0; i < text.length; i++) {
+            const col = startCol + i;
+            const char = text[i];
+            const region = getTerrainRegion(col, US_MAP_WIDTH, rowIndex, US_MAP_HEIGHT);
+            const color = getTerrainColor(region);
+
+            // Check if this is an interior texture character (dot or space inside map)
+            const isInterior = char === '·' || char === ' ';
+            const displayChar = isInterior && char === '·'
+                ? getTerrainChar(region, col, waveFrame)
+                : char;
+
+            if (color !== currentColor && buffer) {
+                // Flush buffer with previous color
+                nodes.push(
+                    <Text key={`${key}-${bufferStart}`} color={currentColor} dimColor>
+                        {buffer}
+                    </Text>
+                );
+                buffer = displayChar ?? '';
+                bufferStart = col;
+                currentColor = color;
+                currentRegion = region;
+            } else {
+                buffer += displayChar ?? '';
+            }
+        }
+
+        // Flush remaining buffer
+        if (buffer) {
+            nodes.push(
+                <Text key={`${key}-${bufferStart}`} color={currentColor} dimColor>
+                    {buffer}
+                </Text>
+            );
+        }
+
+        return nodes;
+    };
+
     if (markersOnRow.length === 0) {
-        return <Text dimColor>{line}</Text>;
+        return <Text>{renderTerrainSegment(line, 0, 'bg')}</Text>;
     }
 
     markersOnRow.sort((a, b) => a.col - b.col);
@@ -59,8 +110,8 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
     markersOnRow.forEach((marker, i) => {
         if (marker.col > lastEnd) {
             segments.push(
-                <Text key={`dim-${i}`} dimColor>
-                    {line.slice(lastEnd, marker.col)}
+                <Text key={`dim-${i}`}>
+                    {renderTerrainSegment(line.slice(lastEnd, marker.col), lastEnd, `bg-${i}`)}
                 </Text>
             );
         }
@@ -172,8 +223,8 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
 
     if (lastEnd < line.length) {
         segments.push(
-            <Text key="dim-end" dimColor>
-                {line.slice(lastEnd)}
+            <Text key="dim-end">
+                {renderTerrainSegment(line.slice(lastEnd), lastEnd, 'bg-end')}
             </Text>
         );
     }
@@ -255,6 +306,9 @@ export const MapLine = memo(MapLineComponent, (prev, next) => {
         }
         if (hasLiveGame) return false;
     }
+
+    // 5. Wave Frame Check - Always re-render on wave frame change for coastal animation
+    if (prev.waveFrame !== next.waveFrame) return false;
 
     return true;
 });
