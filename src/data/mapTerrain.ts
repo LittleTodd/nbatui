@@ -18,11 +18,11 @@ export const TERRAIN_COLORS: Record<TerrainRegion, string> = {
 
 // Terrain textures using expressive Unicode characters
 export const TERRAIN_TEXTURES: Record<TerrainRegion, string[]> = {
-    west_coast: ['🌲', '♠', '🌲'],     // Forest/trees for Pacific Northwest
-    mountain: ['▲', '🏔', '▲'],        // Mountains for Rockies (using simple triangle as fallback)
+    west_coast: ['♠', '♠', '♠'],     // Forest/trees for Pacific Northwest (simplified)
+    mountain: ['▲', '▲', '▲'],        // Mountains for Rockies (simplified)
     plains: ['·', '░', '·'],            // Sparse dots for Great Plains
     midwest: ['♣', '·', '♣'],           // Farmland/trees
-    east: ['🌲', '♠', '♣'],             // Dense forest for Eastern US
+    east: ['♠', '♠', '♣'],             // Dense forest for Eastern US (simplified)
     coast: ['≈', '🌊', '≈'],            // Waves for coastal areas
 };
 
