@@ -95,20 +95,20 @@ export const TEAM_TEXT_COLORS: Record<string, string> = {
     'IND': '#FDBB30', // 黄
     'LAC': '#FFFFFF', // 白
     'LAL': '#FDB927', // 金
-    'MEM': '#5D76A9', // 浅蓝
+    'MEM': '#93B3E6', // 冰蓝 (Improved: Lighter Blue)
     'MIA': '#F9A01B', // 橙
     'MIL': '#F0EBD2', // 奶油
     'MIN': '#78BE20', // 荧光绿
-    'NOP': '#85714D', // 铜金
+    'NOP': '#E5C38C', // 香槟金 (Improved: Brighter Gold)
     'NYK': '#F58426', // 橙
     'OKC': '#EF3B24', // 橙红
     'ORL': '#C4CED4', // 银
     'PHI': '#FFFFFF', // 白
     'PHX': '#E56020', // 橙
-    'POR': '#E03A3E', // 红
-    'SAC': '#63727A', // 银
-    'SAS': '#C4CED4', // 银
+    'POR': '#E03A3E', // 红 (Kept as requested)
+    'SAC': '#D4DCE3', // 亮银灰 (Improved: Lighter Silver)
+    'SAS': '#EFEFEF', // 亮银白 (Improved: Brighter Silver)
     'TOR': '#000000', // 黑
     'UTA': '#F9A01B', // 黄
-    'WAS': '#E31837', // 红
+    'WAS': '#FF6B6B', // 亮红 (Improved: Brighter Red)
 };
