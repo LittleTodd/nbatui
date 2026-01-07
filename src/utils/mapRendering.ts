@@ -114,10 +114,28 @@ export function embedGamesInMap(
         const isHighlighted = checkGameMatchesFilter(game, searchFilter);
         const heat = heatMap[game.gameId];
 
-        // Crunch Time Logic: 4th Qtr or OT, score diff <= 5
-        const isCrunchTime = game.gameStatus === 2 &&
-            game.period >= 4 &&
-            Math.abs(game.homeTeam.score - game.awayTeam.score) <= 5;
+        // Crunch Time Logic: 4th Qtr or OT, score diff <= 5, AND clock < 3 minutes
+        let isCrunchTime = false;
+        if (game.gameStatus === 2 && game.period >= 4 && Math.abs(game.homeTeam.score - game.awayTeam.score) <= 5) {
+            // Check clock: usually in format "PT11M05.00S" or "11:05"
+            // If format is PT...M...S, parse minutes
+            if (game.gameClock) {
+                const ptMatch = game.gameClock.match(/PT(\d+)M/);
+                if (ptMatch) {
+                    const minutes = parseInt(ptMatch[1], 10);
+                    if (minutes < 3) isCrunchTime = true;
+                } else if (game.gameClock.includes(':')) {
+                    // "MM:SS" format
+                    const parts = game.gameClock.split(':');
+                    const minutes = parseInt(parts[0], 10);
+                    if (minutes < 3) isCrunchTime = true;
+                } else {
+                    // Fallback: if we can't parse but it's late game, assume true if period > 4 (OT)
+                    // For Q4, we default to false if we can't read clock to avoid flashing all quarter
+                    if (game.period > 4) isCrunchTime = true;
+                }
+            }
+        }
 
         // Pass isCrunchTime to marker builder if we want it in text, 
         // OR just keep it in GameColor for component level styling.

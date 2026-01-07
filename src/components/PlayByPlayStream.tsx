@@ -202,11 +202,7 @@ export function PlayByPlayStream({
     return (
         <Box flexDirection="column">
             {/* Header */}
-            <Box marginBottom={1}>
-                <Text bold color={isLive ? 'green' : 'gray'}>
-                    {isLive ? '▶ LIVE STREAM' : '📜 GAME RECAP'}
-                </Text>
-            </Box>
+
 
             {/* Event Stream */}
             <Box flexDirection="column">
@@ -328,7 +324,7 @@ export function PlayByPlayStream({
 
             {/* Footer */}
             <Box marginTop={1} justifyContent="space-between">
-                <Text dimColor>Press [S] for Social Buzz</Text>
+
                 {displayActions.length > maxItems && (
                     <Text dimColor>
                         [{scrollOffset + 1}-{Math.min(scrollOffset + maxItems, displayActions.length)}/{displayActions.length}] ↑↓

@@ -40,6 +40,14 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
     const isScheduled = game.gameStatus === 1;
 
+    // Breathing animation for Live Stream indicator
+    const [streamDotDim, setStreamDotDim] = useState(false);
+    useEffect(() => {
+        if (game.gameStatus !== 2) return;
+        const timer = setInterval(() => setStreamDotDim(v => !v), 800);
+        return () => clearInterval(timer);
+    }, [game.gameStatus]);
+
     useEffect(() => {
         let mounted = true;
         setLoading(true);
@@ -205,20 +213,14 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     }
 
     return (
-        <Box flexDirection="column" paddingX={1} paddingTop={0} paddingBottom={0} borderStyle="round" borderColor="cyan">
-
-
-            {/* Only show status for non-final games */}
-            {boxScore.gameStatus !== 3 && (
-                <Box marginBottom={0}>
-                    <Text>Status: {boxScore.gameStatusText}</Text>
-                </Box>
-            )}
+        <Box flexDirection="column" paddingX={1} paddingTop={1} paddingBottom={1} borderStyle="round" borderColor="cyan">
 
             {/* Quarter-by-Quarter Scoring */}
             <QuarterScoreTable
                 awayTeam={boxScore.awayTeam}
                 homeTeam={boxScore.homeTeam}
+                currentPeriod={boxScore.period}
+                isLive={boxScore.gameStatus === 2}
             />
 
             <Box flexDirection="row" justifyContent="center">
@@ -245,13 +247,21 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
             {/* Tab-switchable Bottom Panel */}
             <Box flexDirection="column" marginTop={1} paddingX={1} borderStyle="round" borderColor="gray">
+
                 {/* Tab Header */}
                 <Box marginBottom={1}>
                     <Text
                         bold={activeTab === 'playbyplay'}
                         color={activeTab === 'playbyplay' ? 'green' : 'gray'}
                     >
-                        [P] {game.gameStatus === 2 ? '▶ Live Stream' : '📜 Play-by-Play'}
+                        <Text>[P] </Text>
+                        {game.gameStatus === 2 ? (
+                            <Text>
+                                <Text dimColor={streamDotDim}>▶</Text> Live Stream
+                            </Text>
+                        ) : (
+                            '📜 Play-by-Play'
+                        )}
                     </Text>
                     <Text>  </Text>
                     <Text
@@ -530,9 +540,24 @@ interface TeamWithPeriods {
     periods?: Period[];
 }
 
-const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; homeTeam: TeamWithPeriods }) => {
+interface QuarterScoreTableProps {
+    awayTeam: TeamWithPeriods;
+    homeTeam: TeamWithPeriods;
+    currentPeriod?: number;
+    isLive?: boolean;
+}
+
+const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = false }: QuarterScoreTableProps) => {
     const awayPeriods = awayTeam.periods || [];
     const homePeriods = homeTeam.periods || [];
+
+    // Breathing animation state for live quarter
+    const [breathDim, setBreathDim] = useState(false);
+    useEffect(() => {
+        if (!isLive || currentPeriod === 0) return;
+        const timer = setInterval(() => setBreathDim(v => !v), 600);
+        return () => clearInterval(timer);
+    }, [isLive, currentPeriod]);
 
     // Determine max periods (handles OT)
     const maxPeriods = Math.max(awayPeriods.length, homePeriods.length, 4);
@@ -552,8 +577,11 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
     const awayBg = TEAM_BG_COLORS[awayTeam.teamTricode] || '#333';
     const homeBg = TEAM_BG_COLORS[homeTeam.teamTricode] || '#333';
 
+    // Check if a period is the current live period
+    const isCurrentPeriod = (idx: number) => isLive && (idx + 1) === currentPeriod;
+
     return (
-        <Box flexDirection="column" marginY={1} borderStyle="single" borderColor="gray" paddingX={1}>
+        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="gray" paddingX={1}>
             <Text bold color="cyan">📊 Scoring by Quarter</Text>
             <Box flexDirection="column" marginTop={1}>
                 {/* Header Row */}
@@ -561,7 +589,9 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
                     <Box width={7}><Text dimColor>TEAM</Text></Box>
                     {Array.from({ length: maxPeriods }, (_, i) => (
                         <Box key={i} width={6} justifyContent="center">
-                            <Text dimColor>{getPeriodLabel(i)}</Text>
+                            <Text dimColor={!isCurrentPeriod(i)} bold={isCurrentPeriod(i)} color={isCurrentPeriod(i) ? 'green' : undefined}>
+                                {getPeriodLabel(i)}
+                            </Text>
                         </Box>
                     ))}
                     <Box width={7} justifyContent="flex-end">
@@ -576,7 +606,13 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
                     </Box>
                     {Array.from({ length: maxPeriods }, (_, i) => (
                         <Box key={i} width={6} justifyContent="center">
-                            <Text color="white">{getScore(awayPeriods, i)}</Text>
+                            <Text
+                                color={isCurrentPeriod(i) ? 'green' : 'white'}
+                                bold={isCurrentPeriod(i)}
+                                dimColor={isCurrentPeriod(i) && breathDim}
+                            >
+                                {getScore(awayPeriods, i)}
+                            </Text>
                         </Box>
                     ))}
                     <Box width={7} justifyContent="flex-end">
@@ -593,7 +629,13 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
                     </Box>
                     {Array.from({ length: maxPeriods }, (_, i) => (
                         <Box key={i} width={6} justifyContent="center">
-                            <Text color="white">{getScore(homePeriods, i)}</Text>
+                            <Text
+                                color={isCurrentPeriod(i) ? 'green' : 'white'}
+                                bold={isCurrentPeriod(i)}
+                                dimColor={isCurrentPeriod(i) && breathDim}
+                            >
+                                {getScore(homePeriods, i)}
+                            </Text>
                         </Box>
                     ))}
                     <Box width={7} justifyContent="flex-end">
@@ -606,6 +648,7 @@ const QuarterScoreTable = ({ awayTeam, homeTeam }: { awayTeam: TeamWithPeriods; 
         </Box>
     );
 };
+
 
 // Team Stats Comparison Component (ESPN-style)
 interface TeamStats {
