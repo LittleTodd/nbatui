@@ -174,6 +174,10 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect }: Li
     const [selectedCol, setSelectedCol] = useState(0);
     const [showStatsCard, setShowStatsCard] = useState(false);
 
+    // State to lock onto a specific player ID when viewing stats
+    // This prevents the view from switching if the player is subbed out
+    const [viewingPlayerId, setViewingPlayerId] = useState<number | null>(null);
+
     const awayOnCourt = useMemo(() => getOnCourtPlayers(awayTeam.players), [awayTeam.players]);
     const homeOnCourt = useMemo(() => getOnCourtPlayers(homeTeam.players), [homeTeam.players]);
 
@@ -186,19 +190,45 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect }: Li
     const awayText = TEAM_TEXT_COLORS[awayTeam.teamTricode] || '#fff';
     const homeText = TEAM_TEXT_COLORS[homeTeam.teamTricode] || '#fff';
 
-    // Get currently selected player
-    const selectedPlayer = useMemo(() => {
+    // Get currently highlighted player (cursor position)
+    const highlightedPlayer = useMemo(() => {
         const players = selectedRow === 0 ? awayOnCourt : homeOnCourt;
         return players[selectedCol] || null;
     }, [selectedRow, selectedCol, awayOnCourt, homeOnCourt]);
 
-    const selectedTeamTricode = selectedRow === 0 ? awayTeam.teamTricode : homeTeam.teamTricode;
+    // Get the player to actually display in the card (locked by ID if viewing, otherwise highlighted)
+    const activePlayerContext = useMemo(() => {
+        if (showStatsCard && viewingPlayerId) {
+            // If viewing stats, find the locked player in the FULL roster (even if subbed out)
+            const awayP = awayTeam.players.find(p => p.personId === viewingPlayerId);
+            if (awayP) return { player: awayP, tricode: awayTeam.teamTricode, bg: awayBg, text: awayText };
+
+            const homeP = homeTeam.players.find(p => p.personId === viewingPlayerId);
+            if (homeP) return { player: homeP, tricode: homeTeam.teamTricode, bg: homeBg, text: homeText };
+
+            // Fallback if player not found in rosters (rare)
+            return null;
+        }
+
+        // Otherwise use cursor position
+        if (highlightedPlayer) {
+            const tricode = selectedRow === 0 ? awayTeam.teamTricode : homeTeam.teamTricode;
+            const bg = selectedRow === 0 ? awayBg : homeBg;
+            const text = selectedRow === 0 ? awayText : homeText;
+            return { player: highlightedPlayer, tricode, bg, text };
+        }
+        return null;
+    }, [showStatsCard, viewingPlayerId, highlightedPlayer, awayTeam, homeTeam, selectedRow, awayBg, awayText, homeBg, homeText]);
+
 
     useInput((input, key) => {
         if (!isActive) return;
 
         if (showStatsCard) {
-            // Stats card handles its own input
+            // Stats card is handled by its own component for rendering, 
+            // but we need to capture close event if it bubbled up or wasn't handled? 
+            // Actually PlayerStatsCard has its own useInput. 
+            // But we need to close it here if passed as prop.
             return;
         }
 
@@ -215,13 +245,22 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect }: Li
         if (key.downArrow) {
             setSelectedRow(1);
         }
-        if (key.return && selectedPlayer) {
+        if (key.return && highlightedPlayer) {
+            setViewingPlayerId(highlightedPlayer.personId);
             setShowStatsCard(true);
             if (onPlayerSelect) {
-                onPlayerSelect(selectedPlayer, selectedTeamTricode);
+                // Determine tricode for highlighted player
+                const tricode = selectedRow === 0 ? awayTeam.teamTricode : homeTeam.teamTricode;
+                onPlayerSelect(highlightedPlayer, tricode);
             }
         }
     });
+
+    // Handle closing the stats card
+    const handleCloseStats = () => {
+        setShowStatsCard(false);
+        setViewingPlayerId(null);
+    };
 
     // Render a team row with players spread across available space
     const renderTeamRow = (
@@ -301,13 +340,13 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect }: Li
                 paddingX={1}
             >
                 {/* Title inside border */}
-                {showStatsCard && selectedPlayer ? (
+                {showStatsCard && activePlayerContext ? (
                     <Box flexDirection="row" justifyContent="space-between">
                         <Box>
-                            <Text backgroundColor={selectedRow === 0 ? awayBg : homeBg} color={selectedRow === 0 ? awayText : homeText} bold>
-                                {' '}#{selectedPlayer.jerseyNum} {selectedPlayer.name} {' '}
+                            <Text backgroundColor={activePlayerContext.bg} color={activePlayerContext.text} bold>
+                                {' '}#{activePlayerContext.player.jerseyNum} {activePlayerContext.player.name} {' '}
                             </Text>
-                            <Text bold> {selectedPlayer.position}</Text>
+                            <Text bold> {activePlayerContext.player.position}</Text>
                         </Box>
                         <Text dimColor>Live Stats</Text>
                     </Box>
@@ -319,12 +358,12 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect }: Li
 
                 {/* Content area - matches left panel structure exactly */}
                 <Box flexDirection="column" marginTop={1}>
-                    {showStatsCard && selectedPlayer ? (
+                    {showStatsCard && activePlayerContext ? (
                         // Stats View (Replaces List)
                         <PlayerStatsCard
-                            player={selectedPlayer}
-                            teamTricode={selectedTeamTricode}
-                            onClose={() => setShowStatsCard(false)}
+                            player={activePlayerContext.player}
+                            teamTricode={activePlayerContext.tricode}
+                            onClose={handleCloseStats}
                         />
                     ) : (
                         // List View
