@@ -5,6 +5,7 @@ import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsK
 import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { HeatIndicator } from '../components/HeatIndicator.js';
 import { PlayByPlayStream } from '../components/PlayByPlayStream.js';
+import { LiveOnCourt } from '../components/LiveOnCourt.js';
 
 interface GameDetailPageProps {
     game: Game;
@@ -37,6 +38,9 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     const [activeTab, setActiveTab] = useState<'playbyplay' | 'social'>(
         game.gameStatus === 2 ? 'playbyplay' : 'social'
     );
+
+    // Focus state: 'stream' for play-by-play scrolling, 'oncourt' for player selection
+    const [focusMode, setFocusMode] = useState<'stream' | 'oncourt'>('stream');
 
     const isScheduled = game.gameStatus === 1;
 
@@ -177,8 +181,18 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     }, [game.gameId, game.gameStatus, boxScore?.gameStatus, boxScore?.period, boxScore?.gameClock]);
 
     useInput((input, key) => {
+        // Escape exits - but if focus is on oncourt panel, return to stream first
         if (key.escape || input === 'q' || key.backspace) {
+            if (focusMode === 'oncourt') {
+                setFocusMode('stream');
+                return;
+            }
             onBack();
+        }
+        // Tab key switches focus between stream and oncourt panel (only for live games)
+        if (key.tab && game.gameStatus === 2) {
+            setFocusMode(prev => prev === 'stream' ? 'oncourt' : 'stream');
+            return;
         }
         // Tab switching: P for Play-by-Play, S for Social
         if (input === 'p' || input === 'P') {
@@ -215,13 +229,31 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     return (
         <Box flexDirection="column" paddingX={1} paddingTop={1} paddingBottom={1} borderStyle="round" borderColor="cyan">
 
-            {/* Quarter-by-Quarter Scoring */}
-            <QuarterScoreTable
-                awayTeam={boxScore.awayTeam}
-                homeTeam={boxScore.homeTeam}
-                currentPeriod={boxScore.period}
-                isLive={boxScore.gameStatus === 2}
-            />
+            {/* Top Row: Quarter Scoring + Live On Court (side by side, equal height) */}
+            <Box flexDirection="row" alignItems="stretch" gap={1}>
+                {/* Quarter-by-Quarter Scoring - wrapped for flex control */}
+                <Box flexGrow={1} flexBasis={0}>
+                    <QuarterScoreTable
+                        awayTeam={boxScore.awayTeam}
+                        homeTeam={boxScore.homeTeam}
+                        currentPeriod={boxScore.period}
+                        isLive={boxScore.gameStatus === 2}
+                    />
+                </Box>
+
+                {/* Live On Court Panel - Only show for live games */}
+                {boxScore.gameStatus === 2 && (
+                    <Box flexGrow={1} flexBasis={0}>
+                        <LiveOnCourt
+                            awayTeam={boxScore.awayTeam}
+                            homeTeam={boxScore.homeTeam}
+                            isActive={focusMode === 'oncourt'}
+                        />
+                    </Box>
+                )}
+            </Box>
+
+
 
             <Box flexDirection="row" justifyContent="center">
                 {/* Away Team Top Performers */}
@@ -580,7 +612,7 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
     const isCurrentPeriod = (idx: number) => isLive && (idx + 1) === currentPeriod;
 
     return (
-        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="gray" paddingX={1}>
+        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="gray" paddingX={1} flexGrow={1}>
             <Text bold color="cyan">📊 Scoring by Quarter</Text>
             <Box flexDirection="column" marginTop={1}>
                 {/* Header Row */}

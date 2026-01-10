@@ -229,16 +229,20 @@ export function PlayByPlayStream({
             <Box flexDirection="column">
                 {/* Game End indicator - shows first since it's chronologically last */}
                 {/* Game End indicator - shows first since it's chronologically last */}
-                {!isLive && displayActions.length > 0 && finalResultMsg && (
-                    <Box>
-                        <Text dimColor>[Q4 00:00]</Text>
-                        <Text> </Text>
-                        <Text bold color="yellow">🏀 FINAL</Text>
-                        <Text bold color="white"> {awayScore}-{homeScore}</Text>
-                        <Text>, </Text>
-                        <Text color="cyan">{finalResultMsg}</Text>
-                    </Box>
-                )}
+                {!isLive && displayActions.length > 0 && finalResultMsg && (() => {
+                    const lastAction = displayActions[0];
+                    const endPeriodStr = lastAction ? formatPeriod(lastAction.period, lastAction.periodType) : 'Q4';
+                    return (
+                        <Box>
+                            <Text dimColor>[{endPeriodStr} 00:00]</Text>
+                            <Text> </Text>
+                            <Text bold color="yellow">🏀 FINAL</Text>
+                            <Text bold color="white"> {awayScore}-{homeScore}</Text>
+                            <Text>, </Text>
+                            <Text color="cyan">{finalResultMsg}</Text>
+                        </Box>
+                    );
+                })()}
                 {visibleActions.map((action, idx) => {
                     const isHomeTeam = action.teamTricode === homeTricode;
                     const teamBgColor = action.teamTricode
