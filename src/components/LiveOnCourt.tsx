@@ -100,11 +100,9 @@ function formatPlayerNames(players: PlayerStats[]): { player: PlayerStats; displ
 }
 
 // Mini Stats Card for selected player
-// Mini Stats Card for selected player - Overlay Style
+// Mini Stats Card for selected player - Enhanced UI/UX
 function PlayerStatsCard({ player, teamTricode, onClose }: { player: PlayerStats; teamTricode: string; onClose: () => void }) {
     const stats = player.statistics;
-    const teamBg = TEAM_BG_COLORS[teamTricode] || '#333';
-    const teamText = TEAM_TEXT_COLORS[teamTricode] || '#ffffff';
 
     useInput((input, key) => {
         if (key.escape || key.return) {
@@ -112,57 +110,104 @@ function PlayerStatsCard({ player, teamTricode, onClose }: { player: PlayerStats
         }
     });
 
-    const fgPct = stats.fieldGoalsAttempted > 0
-        ? Math.round((stats.fieldGoalsMade / stats.fieldGoalsAttempted) * 100)
-        : 0;
-    const threePct = stats.threePointersAttempted > 0
-        ? Math.round((stats.threePointersMade / stats.threePointersAttempted) * 100)
-        : 0;
+    const formatPct = (made: number, att: number) => {
+        if (!att || att === 0) return '0%';
+        return `${Math.round((made / att) * 100)}%`;
+    };
+
+    const renderProgressBar = (made: number, att: number, color = 'cyan') => {
+        const total = 5; // 5 blocks total
+        const filled = att > 0 ? Math.round((made / att) * total) : 0;
+        return (
+            <Text>
+                <Text color={color}>{'■'.repeat(filled)}</Text>
+                <Text dimColor>{'□'.repeat(total - filled)}</Text>
+            </Text>
+        );
+    };
 
     return (
-        <Box
-            flexDirection="column"
-            paddingX={1}
-            paddingY={0}
-            flexGrow={1}
-            justifyContent="center"
-        >
-
-
-            {/* Stats Grid - Compact Row */}
-            {/* Stats Grid - Compact Row */}
-            <Box flexDirection="row" justifyContent="space-between" marginTop={0}>
-                <Box flexDirection="column" gap={0}>
-                    <Text><Text bold color="white">{stats.points}</Text> <Text dimColor>PTS</Text></Text>
-                    <Text><Text bold color="white">{stats.reboundsTotal}</Text> <Text dimColor>REB</Text></Text>
-                    <Text><Text bold color="white">{stats.assists}</Text> <Text dimColor>AST</Text></Text>
+        <Box flexDirection="column" paddingX={1} flexGrow={1}>
+            {/* Primary Stats Row */}
+            <Box justifyContent="space-between">
+                <Box flexDirection="column" alignItems="center">
+                    <Text bold color="yellow">{stats.points}</Text>
+                    <Text dimColor>PTS</Text>
                 </Box>
-
-                <Box flexDirection="column" gap={0}>
-                    <Text><Text bold color="white">{stats.fieldGoalsMade}/{stats.fieldGoalsAttempted}</Text> <Text dimColor>FG</Text></Text>
-                    <Text><Text bold color="white">{stats.threePointersMade}/{stats.threePointersAttempted}</Text> <Text dimColor>3PT</Text></Text>
-                    <Text><Text bold color="white">{stats.freeThrowsMade}/{stats.freeThrowsAttempted}</Text> <Text dimColor>FT</Text></Text>
+                <Box flexDirection="column" alignItems="center">
+                    <Text bold color="white">{stats.reboundsTotal}</Text>
+                    <Text dimColor>REB</Text>
                 </Box>
-
-                <Box flexDirection="column" gap={0}>
-                    <Text><Text bold color="white">{stats.steals}</Text> <Text dimColor>STL</Text></Text>
-                    <Text><Text bold color="white">{stats.blocks}</Text> <Text dimColor>BLK</Text></Text>
-                    <Text><Text bold color={stats.turnovers >= 4 ? 'red' : 'white'}>{stats.turnovers}</Text> <Text dimColor>TO</Text></Text>
+                <Box flexDirection="column" alignItems="center">
+                    <Text bold color="white">{stats.assists}</Text>
+                    <Text dimColor>AST</Text>
                 </Box>
-
-                <Box flexDirection="column" gap={0}>
-                    <Text><Text bold color="white">{parseMinutes(stats.minutes)}</Text> <Text dimColor>MIN</Text></Text>
-                    <Text color={stats.plusMinusPoints > 0 ? 'green' : stats.plusMinusPoints < 0 ? 'red' : 'white'}>
-                        <Text bold>{stats.plusMinusPoints > 0 ? '+' : ''}{stats.plusMinusPoints}</Text> <Text dimColor>+/-</Text>
+                <Box flexDirection="column" alignItems="center">
+                    <Text bold color={stats.plusMinusPoints > 0 ? 'green' : stats.plusMinusPoints < 0 ? 'red' : 'white'}>
+                        {stats.plusMinusPoints > 0 ? '+' : ''}{stats.plusMinusPoints}
                     </Text>
-                    <Text color={stats.foulsPersonal >= 4 ? 'yellow' : undefined}>
-                        <Text bold color={stats.foulsPersonal >= 4 ? 'yellow' : 'white'}>{stats.foulsPersonal}</Text> <Text dimColor>PF</Text>
-                    </Text>
+                    <Text dimColor>+/-</Text>
                 </Box>
             </Box>
 
-            <Box marginTop={0} justifyContent="center">
-                <Text dimColor>──────── Esc to close ────────</Text>
+            {/* Shooting Percentages & Efficiency */}
+            <Box flexDirection="row" justifyContent="space-between" paddingY={0}>
+                <Box flexDirection="column" width="30%">
+                    <Box justifyContent="space-between">
+                        <Text color="white">FG </Text>
+                        <Text bold>{formatPct(stats.fieldGoalsMade, stats.fieldGoalsAttempted)}</Text>
+                    </Box>
+                    <Box justifyContent="space-between">
+                        <Text dimColor>{stats.fieldGoalsMade}/{stats.fieldGoalsAttempted}</Text>
+                        {renderProgressBar(stats.fieldGoalsMade, stats.fieldGoalsAttempted)}
+                    </Box>
+                </Box>
+
+                <Box flexDirection="column" width="30%">
+                    <Box justifyContent="space-between">
+                        <Text color="white">3PT</Text>
+                        <Text bold>{formatPct(stats.threePointersMade, stats.threePointersAttempted)}</Text>
+                    </Box>
+                    <Box justifyContent="space-between">
+                        <Text dimColor>{stats.threePointersMade}/{stats.threePointersAttempted}</Text>
+                        {renderProgressBar(stats.threePointersMade, stats.threePointersAttempted, 'yellow')}
+                    </Box>
+                </Box>
+
+                <Box flexDirection="column" width="30%">
+                    <Box justifyContent="space-between">
+                        <Text color="white">FT </Text>
+                        <Text bold>{formatPct(stats.freeThrowsMade, stats.freeThrowsAttempted)}</Text>
+                    </Box>
+                    <Box justifyContent="space-between">
+                        <Text dimColor>{stats.freeThrowsMade}/{stats.freeThrowsAttempted}</Text>
+                        {renderProgressBar(stats.freeThrowsMade, stats.freeThrowsAttempted, 'green')}
+                    </Box>
+                </Box>
+            </Box>
+
+            {/* Secondary Stats: Defense & Usage (No margin) */}
+            <Box justifyContent="space-between">
+                <Box>
+                    <Text dimColor>MIN </Text>
+                    <Text bold color="#000000">{parseMinutes(stats.minutes)}</Text>
+                </Box>
+                <Box>
+                    <Text dimColor>STL </Text>
+                    <Text bold color={stats.steals >= 2 ? 'green' : '#000000'}>{stats.steals}</Text>
+                </Box>
+                <Box>
+                    <Text dimColor>BLK </Text>
+                    <Text bold color={stats.blocks >= 2 ? 'green' : '#000000'}>{stats.blocks}</Text>
+                </Box>
+                <Box>
+                    <Text dimColor>TO </Text>
+                    <Text bold color={stats.turnovers >= 4 ? 'red' : '#000000'}>{stats.turnovers}</Text>
+                </Box>
+                <Box>
+                    <Text dimColor>PF </Text>
+                    <Text bold color={stats.foulsPersonal >= 5 ? 'red' : stats.foulsPersonal >= 4 ? 'yellow' : '#000000'}>{stats.foulsPersonal}</Text>
+                </Box>
             </Box>
         </Box>
     );
@@ -344,14 +389,14 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect, onMo
             >
                 {/* Title inside border */}
                 {showStatsCard && activePlayerContext ? (
-                    <Box flexDirection="row" justifyContent="space-between">
+                    <Box flexDirection="row" justifyContent="space-between" alignItems="center">
                         <Box>
                             <Text backgroundColor={activePlayerContext.bg} color={activePlayerContext.text} bold>
-                                {' '}#{activePlayerContext.player.jerseyNum} {activePlayerContext.player.name} {' '}
+                                {' '}#{activePlayerContext.player.jerseyNum} {activePlayerContext.player.name}{' '}
                             </Text>
-                            <Text bold> {activePlayerContext.player.position}</Text>
+                            <Text dimColor> • {activePlayerContext.player.position}</Text>
                         </Box>
-                        <Text dimColor>Live Stats</Text>
+                        <Text dimColor>(Esc to close)</Text>
                     </Box>
                 ) : (
                     <Text bold color={isActive ? 'green' : 'cyan'}>
@@ -360,7 +405,7 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect, onMo
                 )}
 
                 {/* Content area - matches left panel structure exactly */}
-                <Box flexDirection="column" marginTop={1}>
+                <Box flexDirection="column" marginTop={showStatsCard ? 0 : 1}>
                     {showStatsCard && activePlayerContext ? (
                         // Stats View (Replaces List)
                         <PlayerStatsCard
