@@ -227,7 +227,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     }
 
     return (
-        <Box flexDirection="column" paddingX={1} paddingTop={1} paddingBottom={1} borderStyle="round" borderColor="cyan">
+        <Box flexDirection="column" paddingX={1} paddingTop={1} borderStyle="round" borderColor="cyan">
 
             {/* Top Row: Quarter Scoring + Live On Court (side by side, equal height) */}
             <Box flexDirection="row" alignItems="stretch" gap={1}>
@@ -337,8 +337,11 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 )}
             </Box>
 
+
             {/* Footer - acts as bottom spacing (replaces paddingBottom) */}
-            <Text color="magenta">[Esc] 🏠 Return to Main Menu</Text>
+            <Box paddingLeft={1}>
+                <Text color="magenta">[Esc] 🏠 Return to Main Menu</Text>
+            </Box>
         </Box>
     );
 }

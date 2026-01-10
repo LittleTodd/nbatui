@@ -91,23 +91,30 @@ function consolidateActions(actions: PlayByPlayAction[]): DisplayAction[] {
     for (const action of actions) {
         if (action.actionType === 'substitution' || action.description?.toUpperCase().includes('SUB')) {
             const key = `${action.teamTricode || 'UNKNOWN'}_${action.period}_${action.clock}`;
-            if (!subsMap.has(key)) {
-                subsMap.set(key, { subIn: [], subOut: [], period: action.period, clock: action.clock, team: action.teamTricode || 'UNKNOWN' });
-            }
+
+            const subEntry = subsMap.get(key) || {
+                subIn: [],
+                subOut: [],
+                period: action.period,
+                clock: action.clock,
+                team: action.teamTricode || 'UNKNOWN'
+            };
+            if (!subsMap.has(key)) subsMap.set(key, subEntry);
+
             const desc = action.description || '';
             const playerName = action.playerNameI || '';
 
             if (desc.toUpperCase().includes('SUB IN') || desc.toUpperCase().includes('ENTERS')) {
                 const name = playerName || desc.replace(/SUB\s*(in|IN)?:?\s*/i, '').trim();
-                if (name) subsMap.get(key)!.subIn.push(name);
+                if (name) subEntry.subIn.push(name);
             } else if (desc.toUpperCase().includes('SUB OUT') || desc.toUpperCase().includes('EXITS')) {
                 const name = playerName || desc.replace(/SUB\s*(out|OUT)?:?\s*/i, '').trim();
-                if (name) subsMap.get(key)!.subOut.push(name);
+                if (name) subEntry.subOut.push(name);
             } else if (desc.includes('for')) {
                 const match = desc.match(/(.+?)\s+for\s+(.+)/i);
                 if (match) {
-                    subsMap.get(key)!.subIn.push(match[1].trim());
-                    subsMap.get(key)!.subOut.push(match[2].trim());
+                    subEntry.subIn.push(match[1].trim());
+                    subEntry.subOut.push(match[2].trim());
                 }
             }
         } else {
@@ -323,7 +330,7 @@ export function PlayByPlayStream({
             </Box>
 
             {/* Footer - always maintain same height for layout stability */}
-            <Box marginTop={1} justifyContent="space-between" height={1}>
+            <Box marginTop={1} justifyContent="flex-end" height={1}>
                 {displayActions.length > maxItems ? (
                     <Text dimColor>
                         [{scrollOffset + 1}-{Math.min(scrollOffset + maxItems, displayActions.length)}/{displayActions.length}] ↑↓
