@@ -49,6 +49,7 @@ interface LiveOnCourtProps {
     homeTeam: TeamData;
     isActive: boolean;          // Whether this panel has focus
     onPlayerSelect?: (player: PlayerStats, teamTricode: string) => void;
+    onModalStateChange?: (isOpen: boolean) => void;
 }
 
 // Parse minutes from ISO duration format
@@ -167,7 +168,7 @@ function PlayerStatsCard({ player, teamTricode, onClose }: { player: PlayerStats
     );
 }
 
-export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect }: LiveOnCourtProps) {
+export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect, onModalStateChange }: LiveOnCourtProps) {
     // Selection state: 0 = away team row, 1 = home team row
     // playerIndex: 0-4 for the 5 players
     const [selectedRow, setSelectedRow] = useState(0);
@@ -248,6 +249,7 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect }: Li
         if (key.return && highlightedPlayer) {
             setViewingPlayerId(highlightedPlayer.personId);
             setShowStatsCard(true);
+            onModalStateChange?.(true);
             if (onPlayerSelect) {
                 // Determine tricode for highlighted player
                 const tricode = selectedRow === 0 ? awayTeam.teamTricode : homeTeam.teamTricode;
@@ -260,6 +262,7 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect }: Li
     const handleCloseStats = () => {
         setShowStatsCard(false);
         setViewingPlayerId(null);
+        onModalStateChange?.(false);
     };
 
     // Render a team row with players spread across available space

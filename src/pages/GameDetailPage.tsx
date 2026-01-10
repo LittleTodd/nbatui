@@ -41,6 +41,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
     // Focus state: 'stream' for play-by-play scrolling, 'oncourt' for player selection
     const [focusMode, setFocusMode] = useState<'stream' | 'oncourt'>('stream');
+    const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
 
     const isScheduled = game.gameStatus === 1;
 
@@ -183,6 +184,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     useInput((input, key) => {
         // Escape exits - but if focus is on oncourt panel, return to stream first
         if (key.escape || input === 'q' || key.backspace) {
+            if (isStatsModalOpen) return;
             if (focusMode === 'oncourt') {
                 setFocusMode('stream');
                 return;
@@ -248,6 +250,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                             awayTeam={boxScore.awayTeam}
                             homeTeam={boxScore.homeTeam}
                             isActive={focusMode === 'oncourt'}
+                            onModalStateChange={setIsStatsModalOpen}
                         />
                     </Box>
                 )}
