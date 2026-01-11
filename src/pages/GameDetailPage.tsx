@@ -53,133 +53,132 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
         return () => clearInterval(timer);
     }, [game.gameStatus]);
 
+    // Safe mounted tracking
+    const mountedRef = React.useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+
+    // Initial Data Fetch & Polling Loop
+    // Initial Data Fetch (Social, Odds, Standings) - Run ONCE on mount/gameId change
     useEffect(() => {
         let mounted = true;
         setLoading(true);
 
-        // Fetch Social Data (Parallel)
-        const team1 = game.awayTeam.teamName;
-        const team2 = game.homeTeam.teamName;
+        const fetchStaticData = async () => {
+            // Fetch Social Data (Parallel)
+            const team1 = game.awayTeam.teamName;
+            const team2 = game.homeTeam.teamName;
+            const gameDateStr = game.gameTimeUTC?.slice(0, 10);
 
-        // Check for 6-month limit
-        const gameDateStr = game.gameTimeUTC?.slice(0, 10);
-        let skipSocial = false;
-        if (gameDateStr) {
-            const gameDate = new Date(gameDateStr);
-            const sixMonthsAgo = new Date();
-            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-            if (gameDate < sixMonthsAgo) {
-                skipSocial = true;
+            let skipSocial = false;
+            if (gameDateStr) {
+                const gDate = new Date(gameDateStr);
+                const sixMonths = new Date();
+                sixMonths.setMonth(sixMonths.getMonth() - 6);
+                if (gDate < sixMonths) skipSocial = true;
             }
-        }
 
-        // Skip social data for scheduled games (status=1) - no Reddit thread exists
-        if (!skipSocial && game.gameStatus !== 1) {
-            Promise.all([
-                fetchGameHeat(team1, team2, game.gameStatus, gameDateStr, game.gameId),
-                fetchGameTweets(team1, team2, game.gameStatus, gameDateStr, game.gameId)
-            ]).then(([heatData, tweetsData]) => {
-                if (mounted) {
-                    setSocialHeat(heatData);
-                    setTweets(tweetsData);
-                }
-            });
-        }
-
-        if (isScheduled) {
-            // For scheduled games, fetch standings and odds for preview
-            Promise.all([
-                fetchStandings(),
-                fetchPolymarketOdds()
-            ]).then(([standingsData, oddsData]) => {
-                if (mounted) {
-                    // API returns {standings: [...], count: N} format
-                    const standingsArray = standingsData?.standings || [];
-                    setStandings(Array.isArray(standingsArray) ? standingsArray : []);
-                    // Find odds for this game
-                    const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
-                    let gameOdds = oddsData[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate)];
-                    // Try next day if not found (Polymarket often uses next day)
-                    if (!gameOdds && gameDate) {
-                        const nextDay = new Date(gameDate);
-                        nextDay.setDate(nextDay.getDate() + 1);
-                        const nextDayStr = nextDay.toISOString().slice(0, 10);
-                        gameOdds = oddsData[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
+            // Fetch Social for non-scheduled games (scheduled handled below/separately? No, common logc)
+            // Actually, let's just do it for all valid games
+            // But strict requirement: "Skip social data for scheduled games (status=1) - no Reddit thread exists"
+            if (!skipSocial && game.gameStatus !== 1) {
+                Promise.all([
+                    fetchGameHeat(team1, team2, game.gameStatus, gameDateStr, game.gameId),
+                    fetchGameTweets(team1, team2, game.gameStatus, gameDateStr, game.gameId)
+                ]).then(([heatData, tweetsData]) => {
+                    if (mounted) {
+                        setSocialHeat(heatData);
+                        setTweets(tweetsData);
                     }
-                    setOdds(gameOdds || null);
-                    setLoading(false);
+                });
+            }
+
+            if (isScheduled) {
+                const [standingsData, oddsData] = await Promise.all([
+                    fetchStandings(),
+                    fetchPolymarketOdds()
+                ]);
+
+                if (!mounted) return;
+
+                const standingsArray = standingsData?.standings || [];
+                setStandings(Array.isArray(standingsArray) ? standingsArray : []);
+
+                const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
+                let gameOdds = oddsData[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate)];
+                if (!gameOdds && gameDate) {
+                    const nextDay = new Date(gameDate);
+                    nextDay.setDate(nextDay.getDate() + 1);
+                    const nextDayStr = nextDay.toISOString().slice(0, 10);
+                    gameOdds = oddsData[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
                 }
-            });
-        } else {
-            // For live/completed games, fetch boxscore and play-by-play
-            // Pass gameStatus to enable caching for completed games (status=3)
-            Promise.all([
-                fetchBoxScore(game.gameId),
-                fetchPlayByPlay(game.gameId, game.gameStatus)
-            ]).then(([boxData, pbpData]) => {
-                if (mounted) {
-                    setBoxScore(boxData);
-                    setPlayByPlay(pbpData?.actions || []);
-                    setLoading(false);
-                }
-            });
-        }
+                setOdds(gameOdds || null);
+
+                // For scheduled games, we are done after this.
+                setLoading(false);
+            }
+        };
+
+        fetchStaticData();
 
         return () => { mounted = false; };
     }, [game.gameId, isScheduled]);
 
-    // Auto-refresh for live games (gameStatus === 2)
+    // Polling Logic for Live/Completed Games (Recursive Timeout)
     useEffect(() => {
-        // Only refresh for live games
-        if (game.gameStatus !== 2) return;
+        if (isScheduled) return;
 
-        const refreshData = async () => {
+        let timeoutId: NodeJS.Timeout;
+
+        const loop = async () => {
+            if (!mountedRef.current) return;
+
             try {
                 const [boxData, pbpData] = await Promise.all([
                     fetchBoxScore(game.gameId),
                     fetchPlayByPlay(game.gameId, game.gameStatus)
                 ]);
+
+                if (!mountedRef.current) return;
+
                 if (boxData) setBoxScore(boxData);
                 if (pbpData?.actions) setPlayByPlay(pbpData.actions);
-            } catch {
-                // Silently fail
+                setLoading(false);
+
+                // Stop if game is final (status 3)
+                if (game.gameStatus === 3 && boxData?.gameStatus === 3) return;
+
+                // Determine next delay
+                let delay = 60000; // Default 1 min
+                const statusText = boxData?.gameStatusText || '';
+                const period = boxData?.period || 0;
+                const clock = boxData?.gameClock || '';
+
+                if (statusText.toLowerCase().includes('halftime') || (period === 2 && clock === 'PT00M00.00S')) {
+                    delay = 300000; // 5 mins
+                } else if (clock === 'PT00M00.00S' && period !== 2 && period < 5) {
+                    delay = 120000; // 2 mins quarter break
+                }
+
+                timeoutId = setTimeout(loop, delay);
+
+            } catch (err) {
+                // Retry on error after 1 min
+                if (mountedRef.current) {
+                    timeoutId = setTimeout(loop, 60000);
+                }
             }
         };
 
-        // Determine refresh interval based on game state
-        const getRefreshInterval = () => {
-            if (!boxScore) return 60000; // 1 minute default
+        loop();
 
-            const statusText = boxScore.gameStatusText || '';
-            const period = boxScore.period || 0;
-            const clock = boxScore.gameClock || '';
-
-            // Halftime detection (period 2 ended)
-            if (statusText.toLowerCase().includes('halftime') ||
-                (period === 2 && clock === 'PT00M00.00S')) {
-                return 300000; // 5 minutes during halftime
-            }
-
-            // Quarter break detection (period ended but not halftime)
-            if (clock === 'PT00M00.00S' && period !== 2 && period < 5) {
-                return 120000; // 2 minutes during quarter breaks
-            }
-
-            // Game ended - don't refresh
-            if (boxScore.gameStatus === 3) {
-                return 0; // Signal to stop
-            }
-
-            return 60000; // 1 minute during normal play
+        return () => {
+            clearTimeout(timeoutId);
         };
+    }, [game.gameId, game.gameStatus, isScheduled]);
 
-        const interval = getRefreshInterval();
-        if (interval === 0) return; // Game ended, no refresh needed
-
-        const timer = setInterval(refreshData, interval);
-
-        return () => clearInterval(timer);
-    }, [game.gameId, game.gameStatus, boxScore?.gameStatus, boxScore?.period, boxScore?.gameClock]);
 
     useInput((input, key) => {
         // Escape exits - but if focus is on oncourt panel, return to stream first
