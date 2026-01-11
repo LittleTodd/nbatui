@@ -126,7 +126,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
         return () => { mounted = false; };
     }, [game.gameId, isScheduled]);
 
-    // Polling Logic for Live/Completed Games (Recursive Timeout)
+    // Polling Logic for Main Game Data (Box Score / Header) - Runs regardless of tab
     useEffect(() => {
         if (isScheduled) return;
 
@@ -136,22 +136,22 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
             if (!mountedRef.current) return;
 
             try {
-                const [boxData, pbpData] = await Promise.all([
-                    fetchBoxScore(game.gameId),
-                    fetchPlayByPlay(game.gameId, game.gameStatus)
-                ]);
+                // Fetch Box Score ONLY
+                const boxData = await fetchBoxScore(game.gameId);
 
                 if (!mountedRef.current) return;
 
                 if (boxData) setBoxScore(boxData);
-                if (pbpData?.actions) setPlayByPlay(pbpData.actions);
+                // Note: We don't set loading=false here immediately if we are waiting for initial PBP,
+                // but since they are decoupled, we can just say "Game Info Loaded".
+                // Ideally we want to show data as soon as it arrives.
                 setLoading(false);
 
-                // Stop if game is final (status 3)
+                // Stop if game is final (status 3) and data confirms it
                 if (game.gameStatus === 3 && boxData?.gameStatus === 3) return;
 
                 // Determine next delay
-                let delay = 60000; // Default 1 min
+                let delay = 60000; // Default 1 min for Scoreboard
                 const statusText = boxData?.gameStatusText || '';
                 const period = boxData?.period || 0;
                 const clock = boxData?.gameClock || '';
@@ -165,7 +165,6 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 timeoutId = setTimeout(loop, delay);
 
             } catch (err) {
-                // Retry on error after 1 min
                 if (mountedRef.current) {
                     timeoutId = setTimeout(loop, 60000);
                 }
@@ -174,10 +173,43 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
         loop();
 
-        return () => {
-            clearTimeout(timeoutId);
-        };
+        return () => clearTimeout(timeoutId);
     }, [game.gameId, game.gameStatus, isScheduled]);
+
+    // Dedicated Polling Logic for Play-by-Play - Only runs when tab is active
+    useEffect(() => {
+        if (isScheduled) return;
+        if (activeTab !== 'playbyplay') return;
+
+        let timeoutId: NodeJS.Timeout;
+        let isFetching = false;
+
+        const fetchPBP = async () => {
+            if (!mountedRef.current || isFetching) return;
+            isFetching = true;
+
+            try {
+                const pbpData = await fetchPlayByPlay(game.gameId, game.gameStatus);
+                if (mountedRef.current && pbpData?.actions) {
+                    setPlayByPlay(pbpData.actions);
+                }
+            } catch (e) {
+                // Ignore errors, retry next tick
+            } finally {
+                isFetching = false;
+            }
+
+            // Schedule next update if game is live
+            if (mountedRef.current && game.gameStatus === 2) {
+                // FASTER REFRESH: 15 seconds for Play-by-Play
+                timeoutId = setTimeout(fetchPBP, 15000);
+            }
+        };
+
+        fetchPBP();
+
+        return () => clearTimeout(timeoutId);
+    }, [game.gameId, game.gameStatus, isScheduled, activeTab]);
 
 
     useInput((input, key) => {
