@@ -154,6 +154,20 @@ def fetch_polymarket_odds() -> Dict:
                 else:
                     game_date = "unknown"
                 
+                # Extract CLOB Token IDs for history
+                clob_ids_raw = moneyline_market.get("clobTokenIds", "[]")
+                if isinstance(clob_ids_raw, str):
+                    import json
+                    try:
+                        clob_ids = json.loads(clob_ids_raw)
+                    except:
+                        clob_ids = []
+                else:
+                    clob_ids = clob_ids_raw
+
+                away_token = clob_ids[0] if len(clob_ids) >= 2 else None
+                home_token = clob_ids[1] if len(clob_ids) >= 2 else None
+
                 # Create key for matching
                 key = f"{away_tricode}_{home_tricode}_{game_date}"
                 
@@ -164,6 +178,8 @@ def fetch_polymarket_odds() -> Dict:
                     "homeOdds": home_odds,
                     "awayProb": round(away_prob * 100, 1),
                     "homeProb": round(home_prob * 100, 1),
+                    "awayTokenId": away_token,
+                    "homeTokenId": home_token,
                     "date": game_date,
                     "source": "polymarket",
                     "volume": float(moneyline_market.get("volume", 0))
@@ -206,6 +222,43 @@ def get_odds_for_game(away_tricode: str, home_tricode: str, game_date: str) -> O
         pass
     
     return None
+
+
+def fetch_market_history(clob_id: str) -> List[Dict]:
+    """
+    Fetch historical prices for a specific CLOB token ID.
+    Returns last 48 hours of data with 5 minute resolution for better trend visualization.
+    """
+    if not clob_id:
+        return []
+
+    url = "https://clob.polymarket.com/prices-history"
+    
+    # Get last 48 hours (odds typically appear 1-2 days before game)
+    end_ts = int(time.time())
+    start_ts = end_ts - (2 * 86400)  # 48 hours ago
+    
+    params = {
+        "market": clob_id,
+        "startTs": start_ts,
+        "endTs": end_ts,
+        "fidelity": 5  # 5 minute intervals for more detail
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        # 404 means no history found (new market) or invalid ID
+        if response.status_code == 404:
+            return []
+            
+        response.raise_for_status()
+        data = response.json()
+        
+        history = data.get("history", [])
+        return history
+    except Exception as e:
+        logger.error(f"Failed to fetch history for {clob_id}: {e}")
+        return []
 
 
 def fetch_nba_props() -> Dict[str, List[Dict]]:

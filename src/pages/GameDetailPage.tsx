@@ -6,6 +6,7 @@ import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { HeatIndicator } from '../components/HeatIndicator.js';
 import { PlayByPlayStream } from '../components/PlayByPlayStream.js';
 import { LiveOnCourt } from '../components/LiveOnCourt.js';
+import { OddsCurve } from '../components/OddsCurve.js';
 
 interface GameDetailPageProps {
     game: Game;
@@ -246,7 +247,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
     // Scheduled game: show Game Preview
     if (isScheduled) {
-        return <GamePreview game={game} standings={standings} odds={odds} socialHeat={socialHeat} tweets={tweets} />;
+        return <GamePreview game={game} standings={standings} odds={odds} socialHeat={socialHeat} />;
     }
 
     // Live/completed game: show boxscore
@@ -381,8 +382,10 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 }
 
 // Game Preview component for scheduled games
-function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game; standings: TeamStanding[]; odds: GameOdds | null; socialHeat: SocialHeat | null; tweets: Tweet[] }) {
+// Game Preview component for scheduled games
+function GamePreview({ game, standings, odds, socialHeat }: { game: Game; standings: TeamStanding[]; odds: GameOdds | null; socialHeat: SocialHeat | null }) {
     const { text: gameTime } = getGameStatusInfo(game);
+    const CONTENT_WIDTH = 60; // Slightly narrower for better fit
 
     // Find standings for both teams
     const awayStanding = standings.find(s => s.TeamID === game.awayTeam.teamId);
@@ -390,141 +393,103 @@ function GamePreview({ game, standings, odds, socialHeat, tweets }: { game: Game
 
     const formatRecord = (standing: TeamStanding | undefined) => {
         if (!standing) return 'N/A';
-        const conf = standing.Conference === 'East' ? 'East' : 'West';
-        return `${standing.WINS}-${standing.LOSSES} (#${standing.PlayoffRank} ${conf})`;
+        const conf = standing.Conference === 'East' ? 'E' : 'W';
+        return `${standing.WINS}-${standing.LOSSES} (#${standing.PlayoffRank}${conf})`;
     };
 
     return (
-        <Box flexDirection="column" padding={1} borderStyle="round" borderColor="cyan">
+        <Box flexDirection="column" paddingY={1} borderStyle="round" borderColor="cyan" alignItems="center" width="100%">
             {/* Header */}
-            <Box justifyContent="center" marginBottom={1} flexDirection="column" alignItems="center">
+            <Box flexDirection="column" alignItems="center" marginBottom={1}>
                 <Text bold color="cyan">🏀 GAME PREVIEW</Text>
                 {socialHeat && socialHeat.level !== 'cold' && (
                     <HeatIndicator level={socialHeat.level} count={socialHeat.count} />
                 )}
             </Box>
 
-            {/* Divider */}
-            <Box justifyContent="center">
-                <Text dimColor>{'─'.repeat(40)}</Text>
+            {/* Matchup */}
+            <Box flexDirection="column" alignItems="center" marginBottom={1}>
+                <Text bold color="white">{game.awayTeam.teamCity} {game.awayTeam.teamName} <Text dimColor> @ </Text> {game.homeTeam.teamCity} {game.homeTeam.teamName}</Text>
+                <Box marginTop={1}>
+                    <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text>
+                    <Text color="gray">  vs  </Text>
+                    <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text>
+                </Box>
             </Box>
 
-            {/* Matchup - Primary Focus */}
-            <Box flexDirection="column" alignItems="center" marginY={1}>
-                <Text bold color="white">
-                    {game.awayTeam.teamCity} {game.awayTeam.teamName}
-                </Text>
-                <Text dimColor>  @  </Text>
-                <Text bold color="white">
-                    {game.homeTeam.teamCity} {game.homeTeam.teamName}
-                </Text>
-            </Box>
-
-            <Box justifyContent="center" marginBottom={1}>
-                <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text>
-                <Text color="gray">  vs  </Text>
-                <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text>
-            </Box>
-
-            {/* Tip-off time - Highlighted */}
-            <Box justifyContent="center" paddingY={1} marginBottom={1}>
+            {/* Tip-off time */}
+            <Box marginBottom={1}>
                 <Text backgroundColor="green" color="black" bold> ⏰ {gameTime} </Text>
             </Box>
 
-            {/* Divider */}
-            <Box justifyContent="center">
-                <Text dimColor>{'─'.repeat(40)}</Text>
-            </Box>
+            <Text dimColor>{'─'.repeat(CONTENT_WIDTH)}</Text>
 
-            {/* Season Records */}
-            <Box flexDirection="column" alignItems="center" marginY={1}>
-                <Text bold color="cyan">📊 Season Records</Text>
-                <Box marginTop={1} flexDirection="column">
-                    <Box>
-                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text></Box>
-                        <Text>  {formatRecord(awayStanding)}</Text>
-                    </Box>
-                    <Box>
-                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text></Box>
-                        <Text>  {formatRecord(homeStanding)}</Text>
-                    </Box>
-                </Box>
-            </Box>
-
-            {/* Divider */}
-            <Box justifyContent="center">
-                <Text dimColor>{'─'.repeat(40)}</Text>
-            </Box>
-
-            {/* Recent Form - Last 10 Games */}
-            <Box flexDirection="column" alignItems="center" marginY={1}>
-                <Text bold color="cyan">🔥 Recent Form (L10)</Text>
-                <Box marginTop={1} flexDirection="column">
-                    <Box>
-                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text></Box>
-                        <Text>  {awayStanding?.L10 || 'N/A'}</Text>
-                        {awayStanding?.strCurrentStreak && (
-                            <Text color={awayStanding.strCurrentStreak.startsWith('W') ? 'green' : 'red'} bold>
-                                {' '}({awayStanding.strCurrentStreak})
-                            </Text>
-                        )}
-                    </Box>
-                    <Box>
-                        <Box minWidth={7}><Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text></Box>
-                        <Text>  {homeStanding?.L10 || 'N/A'}</Text>
-                        {homeStanding?.strCurrentStreak && (
-                            <Text color={homeStanding.strCurrentStreak.startsWith('W') ? 'green' : 'red'} bold>
-                                {' '}({homeStanding.strCurrentStreak})
-                            </Text>
-                        )}
-                    </Box>
-                </Box>
-            </Box>
-
-            {/* Odds (if available) */}
-            {odds && odds.awayOdds > 0 && (
-                <>
-                    {/* Divider */}
-                    <Box justifyContent="center">
-                        <Text dimColor>{'─'.repeat(40)}</Text>
-                    </Box>
-
-                    <Box flexDirection="column" alignItems="center" marginY={1}>
-                        <Text bold color="cyan">📈 Odds (Polymarket)</Text>
-                        <Box marginTop={1} gap={2}>
+            {/* Stats Block */}
+            <Box width={CONTENT_WIDTH} justifyContent="space-between" marginY={1}>
+                {/* Season Records */}
+                <Box flexDirection="column" alignItems="flex-start" width="45%">
+                    <Text bold color="cyan">📊 Records</Text>
+                    <Box marginTop={1} flexDirection="column">
+                        <Box>
                             <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text>
-                            <Text color="green" bold>{odds.awayOdds.toFixed(2)}</Text>
-                            <Text dimColor>|</Text>
-                            <Text color="green" bold>{odds.homeOdds.toFixed(2)}</Text>
+                            <Text> {formatRecord(awayStanding)}</Text>
+                        </Box>
+                        <Box marginTop={1}>
                             <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text>
+                            <Text> {formatRecord(homeStanding)}</Text>
                         </Box>
                     </Box>
-                </>
-            )}
+                </Box>
 
-            {/* Social Buzz for Preview */}
-            {tweets.length > 0 && (
-                <>
-                    <Box justifyContent="center">
-                        <Text dimColor>{'─'.repeat(40)}</Text>
+                <Box minWidth={1}><Text dimColor>│</Text></Box>
+
+                {/* Recent Form */}
+                <Box flexDirection="column" alignItems="flex-start" width="45%">
+                    <Text bold color="cyan">🔥 Last 10</Text>
+                    <Box marginTop={1} flexDirection="column">
+                        <Box>
+                            <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text>
+                            <Text> {awayStanding?.L10 || 'N/A'}</Text>
+                            {awayStanding?.strCurrentStreak && (
+                                <Text color={awayStanding.strCurrentStreak.startsWith('W') ? 'green' : 'red'}> ({awayStanding.strCurrentStreak})</Text>
+                            )}
+                        </Box>
+                        <Box marginTop={1}>
+                            <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text>
+                            <Text> {homeStanding?.L10 || 'N/A'}</Text>
+                            {homeStanding?.strCurrentStreak && (
+                                <Text color={homeStanding.strCurrentStreak.startsWith('W') ? 'green' : 'red'}> ({homeStanding.strCurrentStreak})</Text>
+                            )}
+                        </Box>
                     </Box>
-                    <Box flexDirection="column" marginTop={1} paddingX={1} alignItems="center">
-                        <Text bold color="cyan">💬 Pre-Game Chatter</Text>
-                        {tweets.slice(0, 3).map((t, i) => (
-                            <Box key={i} flexDirection="column" marginTop={1}>
-                                <Text dimColor>@{t.user} • {t.likes} pts</Text>
-                                <Text>"{t.text}"</Text>
-                            </Box>
-                        ))}
+                </Box>
+            </Box>
+
+            {/* Odds & Curve */}
+            {odds && odds.awayOdds > 0 && (
+                <Box flexDirection="column" alignItems="center" width="100%">
+                    <Text dimColor>{'─'.repeat(CONTENT_WIDTH)}</Text>
+                    <Box marginY={1} gap={2}>
+                        <Text bold color="cyan">📈 Polymarket:</Text>
+                        <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text>
+                        <Text color="green" bold>{odds.awayOdds.toFixed(2)}</Text>
+                        <Text dimColor>|</Text>
+                        <Text color="green" bold>{odds.homeOdds.toFixed(2)}</Text>
+                        <Text bold backgroundColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.homeTeam.teamTricode] || '#ffffff'}> {game.homeTeam.teamTricode} </Text>
                     </Box>
-                </>
+
+                    {odds.awayTokenId && (
+                        <OddsCurve
+                            clobId={odds.awayTokenId}
+                            teamTricode={game.awayTeam.teamTricode}
+                            oppTricode={game.homeTeam.teamTricode}
+                        />
+                    )}
+                </Box>
             )}
 
             {/* Footer */}
-            <Box justifyContent="center" marginTop={1}>
-                <Text dimColor>{'─'.repeat(40)}</Text>
-            </Box>
-            <Box marginTop={1} justifyContent="center">
+            <Box borderStyle="single" borderTop={true} borderBottom={false} borderLeft={false} borderRight={false} borderColor="gray" paddingTop={1} width={CONTENT_WIDTH} justifyContent="center">
                 <Text dimColor>Press Esc to go back</Text>
             </Box>
         </Box>

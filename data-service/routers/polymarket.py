@@ -45,3 +45,13 @@ def get_nba_props() -> Dict:
     from services.polymarket_service import fetch_nba_props
     props = fetch_nba_props()
     return {"props": props}
+
+
+@router.get("/history/{clob_id}")
+def get_token_history(clob_id: str) -> Dict:
+    """
+    Get 24h price history for a specific CLOB token ID.
+    """
+    from services.polymarket_service import fetch_market_history
+    history = fetch_market_history(clob_id)
+    return {"history": history, "count": len(history)}

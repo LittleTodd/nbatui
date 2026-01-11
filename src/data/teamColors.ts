@@ -112,3 +112,66 @@ export const TEAM_TEXT_COLORS: Record<string, string> = {
     'UTA': '#F9A01B', // 黄
     'WAS': '#FF6B6B', // 亮红 (Improved: High Contrast Coral Red)
 };
+
+/**
+ * Calculate relative luminance of a hex color (0 = black, 1 = white)
+ */
+function getLuminance(hex: string): number {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return 0.5;
+
+    const r = parseInt(result[1]!, 16) / 255;
+    const g = parseInt(result[2]!, 16) / 255;
+    const b = parseInt(result[3]!, 16) / 255;
+
+    // sRGB to linear conversion
+    const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+
+    return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+/**
+ * Get high-contrast team color for charts based on terminal background brightness
+ * 
+ * @param teamTricode - Team abbreviation (e.g., 'HOU')
+ * @param isLightBackground - Whether the terminal has a light background (default: true)
+ * @returns The color that provides better contrast on the given background
+ * 
+ * Logic:
+ * - Light background → use the DARKER color from bg/text pair
+ * - Dark background → use the LIGHTER color from bg/text pair
+ */
+export function getChartColor(teamTricode: string, isLightBackground: boolean = true): string {
+    const bgColor = TEAM_BG_COLORS[teamTricode] || '#666666';
+    const textColor = TEAM_TEXT_COLORS[teamTricode] || '#FFFFFF';
+
+    const bgLuminance = getLuminance(bgColor);
+    const textLuminance = getLuminance(textColor);
+
+    if (isLightBackground) {
+        // Light terminal background: use the darker team color
+        return bgLuminance < textLuminance ? bgColor : textColor;
+    } else {
+        // Dark terminal background: use the lighter team color
+        return bgLuminance > textLuminance ? bgColor : textColor;
+    }
+}
+
+/**
+ * Detect if terminal likely has a light background
+ * This is a heuristic - can be overridden by config
+ */
+export function detectLightBackground(): boolean {
+    // Check COLORFGBG environment variable (format: "fg;bg" where common values are 15;0 for dark, 0;15 for light)
+    const colorFgBg = process.env.COLORFGBG;
+    if (colorFgBg) {
+        const parts = colorFgBg.split(';');
+        const bg = parseInt(parts[1] || '0', 10);
+        // Values >= 7 typically indicate light backgrounds
+        return bg >= 7;
+    }
+
+    // Default assumption: light background (most common for macOS terminals)
+    return true;
+}
+

@@ -294,6 +294,8 @@ export interface GameOdds {
     date: string;
     source: string;
     volume?: number;
+    awayTokenId?: string;
+    homeTokenId?: string;
 }
 
 export interface OddsResponse {
@@ -320,6 +322,30 @@ export async function fetchPolymarketOdds(): Promise<Record<string, GameOdds>> {
  */
 export function getOddsKey(awayTricode: string, homeTricode: string, date: string): string {
     return `${awayTricode}_${homeTricode}_${date}`;
+}
+
+export interface PricePoint {
+    t: number; // timestamp
+    p: number; // price
+}
+
+export interface HistoryResponse {
+    history: PricePoint[];
+    count: number;
+}
+
+/**
+ * Fetch historical prices for a CLOB token
+ */
+export async function fetchTokenHistory(clobId: string): Promise<PricePoint[]> {
+    try {
+        const res = await fetch(`${BASE_URL}/api/polymarket/history/${clobId}`);
+        if (!res.ok) return [];
+        const data = (await res.json()) as HistoryResponse;
+        return data.history;
+    } catch {
+        return [];
+    }
 }
 
 export interface Candidate {
