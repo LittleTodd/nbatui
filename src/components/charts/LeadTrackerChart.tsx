@@ -150,15 +150,25 @@ export const LeadTrackerChart: React.FC<LeadTrackerChartProps> = ({
     }
 
     // Convert offset to absolute probability for display
-    const topProb = 50 + displayMax;
-    const botProb = 50 + displayMin;
-    const midProb = 50;
+    // When crossing zero, both ends should show the same probability (symmetric)
+    let topProb: number;
+    let botProb: number;
+
+    if (crossesZero) {
+        // Symmetric: both show 50 + maxAbs (e.g., 60 for both when maxAbs=10)
+        const maxAbs = Math.max(Math.abs(displayMax), Math.abs(displayMin));
+        topProb = 50 + maxAbs;
+        botProb = 50 + maxAbs;  // Same value, different teams
+    } else {
+        topProb = 50 + displayMax;
+        botProb = 50 + displayMin;
+    }
 
     // Determine which team label goes where
-    const topTeam = displayMax > 0 ? teamLabel : oppLabel;
-    const botTeam = displayMin < 0 ? oppLabel : teamLabel;
-    const topColor = displayMax > 0 ? teamColor : oppColor;
-    const botColor = displayMin < 0 ? oppColor : teamColor;
+    const topTeam = teamLabel;  // Top always shows the tracked team
+    const botTeam = oppLabel;   // Bottom shows opponent
+    const topColor = teamColor;
+    const botColor = oppColor;
 
     // Stats for footer (absolute probabilities)
     const currentVal = sampledData[sampledData.length - 1] || 0;
