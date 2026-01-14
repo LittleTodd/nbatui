@@ -393,8 +393,8 @@ function GamePreview({ game, standings, odds, socialHeat }: { game: Game; standi
 
     const formatRecord = (standing: TeamStanding | undefined) => {
         if (!standing) return 'N/A';
-        const conf = standing.Conference === 'East' ? 'E' : 'W';
-        return `${standing.WINS}-${standing.LOSSES} (#${standing.PlayoffRank}${conf})`;
+        const conf = standing.Conference === 'East' ? 'East' : 'West';
+        return `${standing.WINS}-${standing.LOSSES} (#${standing.PlayoffRank} ${conf})`;
     };
 
     return (
