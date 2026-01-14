@@ -134,21 +134,21 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
             const isFinal = game.gameStatus === 3;
             const isFuture = game.gameStatus === 1;
 
-            let finalColor = marker.isLive ? 'green' : (isFinal ? 'blue' : 'gray');
+            // For future games, use dim gray color instead of dimColor to avoid ANSI escape code pollution
+            // between sibling Text elements (chalk.dim() codes were affecting subsequent team colors)
+            const shouldDim = isFuture && !marker.isHighlighted && !marker.isSelected;
+            let finalColor = marker.isLive ? 'green' : (isFinal ? 'blue' : (shouldDim ? '#666666' : 'gray'));
             let finalBg = undefined;
             let finalBold = marker.isSelected;
-            let finalDim = isFuture && !marker.isHighlighted && !marker.isSelected;
 
-            if (marker.isHighlighted) {
+            if (marker.isHighlighted && teamCode) {
                 finalColor = TEAM_TEXT_COLORS[teamCode] || '#ffffff';
                 finalBold = true;
-                finalDim = false;
             } else if (bg && teamCode) {
                 // Team Color Block - use team-specific text color
                 finalBg = bg;
                 finalColor = TEAM_TEXT_COLORS[teamCode] || '#ffffff';
                 finalBold = true;
-                finalDim = false;
             } else if (marker.heat?.level === 'fire' || marker.heat?.level === 'hot') {
                 finalColor = marker.heat.level === 'fire' ? 'red' : 'orange';
                 finalBold = true;
@@ -166,7 +166,6 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
             } else if (marker.isSelected) {
                 finalColor = 'cyan';
                 finalBold = true;
-                finalDim = false;
             }
 
             return (
@@ -175,7 +174,6 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
                     color={finalColor}
                     backgroundColor={finalBg}
                     bold={finalBold}
-                    dimColor={finalDim}
                 >
                     {text}
                 </Text>
