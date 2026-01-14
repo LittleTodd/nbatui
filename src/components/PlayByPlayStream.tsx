@@ -23,6 +23,7 @@ export interface PlayByPlayAction {
 
 interface DisplayAction {
     id: string;
+    actionNumber: number;
     period: number;
     periodType: string;
     clock: string;
@@ -120,6 +121,7 @@ function consolidateActions(actions: PlayByPlayAction[]): DisplayAction[] {
         } else {
             result.push({
                 id: `${action.actionNumber}`,
+                actionNumber: action.actionNumber,
                 period: action.period,
                 periodType: action.periodType,
                 clock: action.clock,
@@ -137,6 +139,7 @@ function consolidateActions(actions: PlayByPlayAction[]): DisplayAction[] {
         if (subs.subIn.length === 0 && subs.subOut.length === 0) continue;
         result.push({
             id: `sub_${key}`,
+            actionNumber: 0, // Substitutions don't have a specific actionNumber
             period: subs.period,
             periodType: 'REGULAR',
             clock: subs.clock,
@@ -154,9 +157,12 @@ function consolidateActions(actions: PlayByPlayAction[]): DisplayAction[] {
     // Sort: newest first
     // - Higher period first (Q4 before Q3)
     // - Within same period: lower clock first (00:05 happened after 12:00)
+    // - Within same clock: higher actionNumber first (later event = show first)
     result.sort((a, b) => {
         if (a.period !== b.period) return b.period - a.period;
-        return a.clock.localeCompare(b.clock);  // Lower clock = happened later = show first
+        const clockCompare = a.clock.localeCompare(b.clock);
+        if (clockCompare !== 0) return clockCompare;  // Lower clock = happened later = show first
+        return b.actionNumber - a.actionNumber;  // Higher actionNumber = happened later = show first
     });
 
     return result;
@@ -188,24 +194,6 @@ export function PlayByPlayStream({
         return consolidateActions(filtered);
     }, [actions]);
 
-    useInput((input, key) => {
-        if (key.upArrow) setScrollOffset(prev => Math.max(0, prev - 1));
-        if (key.downArrow) setScrollOffset(prev => Math.min(Math.max(0, displayActions.length - maxItems), prev + 1));
-    });
-
-    const visibleActions = displayActions.slice(scrollOffset, scrollOffset + maxItems);
-
-    if (visibleActions.length === 0) {
-        return (
-            <Box flexDirection="column" paddingX={1}>
-                <Text dimColor>No play-by-play data available.</Text>
-            </Box>
-        );
-    }
-
-    const homeColor = TEAM_BG_COLORS[homeTricode] || '#444444';
-    const awayColor = TEAM_BG_COLORS[awayTricode] || '#666666';
-
     const finalResultMsg = useMemo(() => {
         if (isLive) return '';
 
@@ -226,6 +214,24 @@ export function PlayByPlayStream({
         }
         return '';
     }, [isLive, homeScore, awayScore, homeName, homeTricode, awayName, awayTricode]);
+
+    useInput((input, key) => {
+        if (key.upArrow) setScrollOffset(prev => Math.max(0, prev - 1));
+        if (key.downArrow) setScrollOffset(prev => Math.min(Math.max(0, displayActions.length - maxItems), prev + 1));
+    });
+
+    const visibleActions = displayActions.slice(scrollOffset, scrollOffset + maxItems);
+
+    if (visibleActions.length === 0) {
+        return (
+            <Box flexDirection="column" paddingX={1}>
+                <Text dimColor>No play-by-play data available.</Text>
+            </Box>
+        );
+    }
+
+    const homeColor = TEAM_BG_COLORS[homeTricode] || '#444444';
+    const awayColor = TEAM_BG_COLORS[awayTricode] || '#666666';
 
     return (
         <Box flexDirection="column">
