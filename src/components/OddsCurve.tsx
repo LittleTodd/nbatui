@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { fetchTokenHistory, type PricePoint } from '../services/apiClient.js';
 import { LeadTrackerChart } from './charts/LeadTrackerChart.js';
-import { getChartColor, detectLightBackground } from '../data/teamColors.js';
+import { getChartColor, detectLightBackground, getContrastRatio, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 
 interface OddsCurveProps {
     clobId: string;
@@ -16,8 +16,19 @@ export const OddsCurve: React.FC<OddsCurveProps> = ({ clobId, teamTricode, oppTr
 
     // Detect terminal background and select high-contrast colors
     const isLight = detectLightBackground();
-    const teamColor = getChartColor(teamTricode, isLight);
-    const oppColor = oppTricode ? getChartColor(oppTricode, isLight) : '#888888';
+    let teamColor = getChartColor(teamTricode, isLight);
+    let oppColor = oppTricode ? getChartColor(oppTricode, isLight) : '#888888';
+
+    // If team and opponent colors are too similar (very low contrast), use text color for opponent
+    // Threshold 1.5: BKN/NOP (1.3) triggers, CLE/PHI (1.9) does not
+    // Also avoid using white (#FFFFFF) or black (#000000) as they don't work well in terminals
+    if (oppTricode && getContrastRatio(teamColor, oppColor) < 1.5) {
+        const textColor = TEAM_TEXT_COLORS[oppTricode];
+        // Only use text color if it's not white or black
+        if (textColor && textColor !== '#FFFFFF' && textColor !== '#000000') {
+            oppColor = textColor;
+        }
+    }
 
     useEffect(() => {
         let mounted = true;

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text, Box } from 'ink';
+import { blendColors, getLuminance } from '../../data/teamColors.js';
 
 interface LeadTrackerChartProps {
     data: number[];  // Values centered around 0 (positive = team lead, negative = opponent lead)
@@ -122,18 +123,32 @@ export const LeadTrackerChart: React.FC<LeadTrackerChartProps> = ({
         const edgeRow = valueToRow(value);
 
         // Determine fill direction and color
+        // Plan A+: Extend bars to meet at the 50% line with blended color for smooth transition
         if (showZeroLine && zeroRow >= 0) {
-            // Bidirectional: fill from zero line to value
+            // Calculate blended color for the 50% line
+            const blendedColor = blendColors(teamColor, oppColor);
+
             if (value > 0) {
+                // Team is favored: fill from edgeRow down to zeroRow-1, then zeroRow with blend
                 for (let row = edgeRow; row < zeroRow; row++) {
                     grid[row]![col] = '█';
                     colorGrid[row]![col] = teamColor;
                 }
+                // 50% line uses blended color
+                grid[zeroRow]![col] = '█';
+                colorGrid[zeroRow]![col] = blendedColor;
             } else if (value < 0) {
+                // Opponent is favored: zeroRow with blend, then fill down to edgeRow
+                grid[zeroRow]![col] = '█';
+                colorGrid[zeroRow]![col] = blendedColor;
                 for (let row = zeroRow + 1; row <= edgeRow; row++) {
                     grid[row]![col] = '█';
                     colorGrid[row]![col] = oppColor;
                 }
+            } else {
+                // value === 0: exactly 50%, use blended color
+                grid[zeroRow]![col] = '█';
+                colorGrid[zeroRow]![col] = blendedColor;
             }
         } else {
             // Unidirectional zoomed view: always fill from bottom UP to current value
@@ -150,25 +165,33 @@ export const LeadTrackerChart: React.FC<LeadTrackerChartProps> = ({
     }
 
     // Convert offset to absolute probability for display
-    // When crossing zero, both ends should show the same probability (symmetric)
+    // When crossing zero: symmetric probabilities, different team labels
+    // When not crossing: linear probabilities, same team label
     let topProb: number;
     let botProb: number;
+    let topTeam: string;
+    let botTeam: string;
+    let topColor: string;
+    let botColor: string;
 
     if (crossesZero) {
-        // Symmetric: both show 50 + maxAbs (e.g., 60 for both when maxAbs=10)
+        // Symmetric: both show same distance from 50%
         const maxAbs = Math.max(Math.abs(displayMax), Math.abs(displayMin));
         topProb = 50 + maxAbs;
-        botProb = 50 + maxAbs;  // Same value, different teams
+        botProb = 50 + maxAbs;
+        topTeam = teamLabel;
+        botTeam = oppLabel;
+        topColor = teamColor;
+        botColor = oppColor;
     } else {
+        // Zoomed view: show actual probability range for tracked team
         topProb = 50 + displayMax;
         botProb = 50 + displayMin;
+        topTeam = teamLabel;
+        botTeam = teamLabel;
+        topColor = teamColor;
+        botColor = teamColor;
     }
-
-    // Determine which team label goes where
-    const topTeam = teamLabel;  // Top always shows the tracked team
-    const botTeam = oppLabel;   // Bottom shows opponent
-    const topColor = teamColor;
-    const botColor = oppColor;
 
     // Stats for footer (absolute probabilities)
     const currentVal = sampledData[sampledData.length - 1] || 0;
@@ -206,26 +229,42 @@ export const LeadTrackerChart: React.FC<LeadTrackerChartProps> = ({
                 </Box>
 
                 {/* Stats footer - show absolute win probability */}
-                <Box justifyContent="space-around" marginTop={1}>
-                    <Text>
-                        <Text dimColor>High: </Text>
-                        <Text bold color={dataMax >= 0 ? teamColor : oppColor}>
-                            {(dataMax + 50).toFixed(0)}%
-                        </Text>
-                    </Text>
-                    <Text>
-                        <Text dimColor>Now: </Text>
-                        <Text bold color={currentVal >= 0 ? teamColor : oppColor}>
-                            {(currentVal + 50).toFixed(0)}%
-                        </Text>
-                    </Text>
-                    <Text>
-                        <Text dimColor>Low: </Text>
-                        <Text bold color={dataMin >= 0 ? teamColor : oppColor}>
-                            {(dataMin + 50).toFixed(0)}%
-                        </Text>
-                    </Text>
-                </Box>
+                {/* Use readable colors for text - if color is too light, use a darker fallback */}
+                {(() => {
+                    const getReadableColor = (color: string): string => {
+                        const luminance = getLuminance(color);
+                        // If color is too light for light background, use a dark gray
+                        if (luminance > 0.6) return '#555555';
+                        return color;
+                    };
+
+                    const highColor = getReadableColor(dataMax >= 0 ? teamColor : oppColor);
+                    const nowColor = getReadableColor(currentVal >= 0 ? teamColor : oppColor);
+                    const lowColor = getReadableColor(dataMin >= 0 ? teamColor : oppColor);
+
+                    return (
+                        <Box justifyContent="space-around" marginTop={1}>
+                            <Text>
+                                <Text dimColor>High: </Text>
+                                <Text bold color={highColor}>
+                                    {(dataMax + 50).toFixed(0)}%
+                                </Text>
+                            </Text>
+                            <Text>
+                                <Text dimColor>Now: </Text>
+                                <Text bold color={nowColor}>
+                                    {(currentVal + 50).toFixed(0)}%
+                                </Text>
+                            </Text>
+                            <Text>
+                                <Text dimColor>Low: </Text>
+                                <Text bold color={lowColor}>
+                                    {(dataMin + 50).toFixed(0)}%
+                                </Text>
+                            </Text>
+                        </Box>
+                    );
+                })()}
             </Box>
         </Box>
     );
