@@ -41,7 +41,13 @@ class SocialPrefetchWorker:
         """Main loop"""
         while self.running:
             try:
-                self._process_todays_games()
+                # Process Today and Yesterday to catch games ending after midnight
+                from services.timezone_utils import get_local_today
+                today = get_local_today()
+                yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+                
+                self._process_games_for_date(yesterday)
+                self._process_games_for_date(today)
             except Exception as e:
                 print(f"[SocialWorker] Error in loop: {e}")
             
@@ -52,11 +58,11 @@ class SocialPrefetchWorker:
                     break
                 time.sleep(10)
 
-    def _process_todays_games(self):
-        """Fetch today's games and cache social data for finished ones (2+ hours old)"""
+    def _process_games_for_date(self, date_str: str):
+        """Fetch games for a date and cache social data for finished ones (2+ hours old)"""
         try:
-            print("[SocialWorker] Checking for finished games to cache...")
-            games = self.nba_service.get_today_games()
+            print(f"[SocialWorker] Checking games for {date_str} to prefetch/cache...")
+            games = self.nba_service.get_games_by_date(date_str)
             
             for game in games:
                 if not self.running:
@@ -91,18 +97,20 @@ class SocialPrefetchWorker:
                 if not game_date: 
                     continue
 
-                # 5. Check Heat Cache - only fetch if not already cached
+                # 5. Check Heat Cache - only skip if data is mature
                 heat_key = f"heat_{team1}_{team2}_{game_date}"
-                if not cache_service.get_cached_social(heat_key):
-                    print(f"[SocialWorker] Prefetching Heat for {team1} vs {team2} (2h+ passed)...")
+                cached_heat = cache_service.get_cached_social(heat_key)
+                if not cached_heat or not cached_heat.get('is_mature', False):
+                    print(f"[SocialWorker] Prefetching Heat for {team1} vs {team2} (2h+ passed, {'refreshing immature' if cached_heat else 'new'})...")
                     self._prefetch_heat(team1, team2, heat_key)
                     time.sleep(5)  # Be polite to Reddit API
 
-                # 6. Check Comments Cache
+                # 6. Check Comments Cache - only skip if data is mature
                 limit = 5
                 comments_key = f"comments_{team1}_{team2}_{game_date}_{limit}"
-                if not cache_service.get_cached_social(comments_key):
-                    print(f"[SocialWorker] Prefetching Comments for {team1} vs {team2} (2h+ passed)...")
+                cached_comments = cache_service.get_cached_social(comments_key)
+                if not cached_comments or not cached_comments.get('is_mature', False):
+                    print(f"[SocialWorker] Prefetching Comments for {team1} vs {team2} (2h+ passed, {'refreshing immature' if cached_comments else 'new'})...")
                     self._prefetch_comments(team1, team2, comments_key, limit)
                     time.sleep(5)
 
@@ -110,7 +118,8 @@ class SocialPrefetchWorker:
             print(f"[SocialWorker] Error fetching games: {e}")
 
     def _prefetch_heat(self, team1: str, team2: str, key: str):
-        thread = self.reddit_service.find_game_thread(team1, team2)
+        # For finished games, prefer Post Game Thread (higher quality comments)
+        thread = self.reddit_service.find_game_thread(team1, team2, prefer_pgt=True)
         if not thread:
             return
 
@@ -125,7 +134,10 @@ class SocialPrefetchWorker:
             "level": level,
             "trending": count > 500,
             "school_thread_id": thread['id'],
-            "url": thread['url']
+            "url": thread['url'],
+            "thread_type": thread.get('thread_type'),
+            "fetched_at": datetime.now().isoformat(),
+            "is_mature": True  # Worker data is always mature
         }
         
         # Save to DB
@@ -134,7 +146,8 @@ class SocialPrefetchWorker:
         set_mem_cache(f"heat_{team1}_{team2}", result)
 
     def _prefetch_comments(self, team1: str, team2: str, key: str, limit: int):
-        thread = self.reddit_service.find_game_thread(team1, team2)
+        # For finished games, prefer Post Game Thread (higher quality comments)
+        thread = self.reddit_service.find_game_thread(team1, team2, prefer_pgt=True)
         if not thread:
             return
 
@@ -148,7 +161,12 @@ class SocialPrefetchWorker:
                 "id": c['id']
             })
             
-        result = {"tweets": formatted_comments}
+        result = {
+            "tweets": formatted_comments, 
+            "is_mature": True,
+            "thread_type": thread.get('thread_type'),
+            "fetched_at": datetime.now().isoformat()
+        }  # Worker data is always mature
         
         # Save to DB
         cache_service.cache_social(key, result)

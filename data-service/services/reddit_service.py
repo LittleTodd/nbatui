@@ -70,19 +70,38 @@ class RedditService:
     def __init__(self):
         self.base_url = "https://www.reddit.com"
 
-    def find_game_thread(self, team1: str, team2: str) -> Optional[Dict[str, Any]]:
+    def find_game_thread(self, team1: str, team2: str, prefer_pgt: bool = False) -> Optional[Dict[str, Any]]:
         """
         Search for an active or recent Game Thread for the given matchup.
         Returns thread metadata if found.
+        
+        Args:
+            team1: First team name
+            team2: Second team name  
+            prefer_pgt: If True, search for Post Game Thread first (recommended for finished games)
         """
-        # Search query: "Game Thread" + team names, sorted by new
-        query = f'flair:"Game Thread" {team1} {team2}'
+        # For finished games, try Post Game Thread first (higher quality comments)
+        if prefer_pgt:
+            pgt = self._search_thread(team1, team2, flair="Post Game Thread")
+            if pgt:
+                return pgt
+        
+        # Fallback to regular Game Thread
+        return self._search_thread(team1, team2, flair="Game Thread")
+    
+    def _search_thread(self, team1: str, team2: str, flair: str) -> Optional[Dict[str, Any]]:
+        """
+        Search for a thread with specific flair and verify it's the correct matchup.
+        """
+        # Search query: flair + team names in TITLE to be more specific
+        # We search for both team names to ensure it's a matchup thread
+        query = f'flair:"{flair}" title:"{team1}" title:"{team2}"'
         encoded_query = urllib.parse.quote(query)
         
-        # Search last month to capture recent past games
-        url = f"{self.base_url}/r/nba/search.json?q={encoded_query}&restrict_sr=on&sort=new&t=month&limit=5"
+        # Search last week (PGTs are usually very recent)
+        url = f"{self.base_url}/r/nba/search.json?q={encoded_query}&restrict_sr=on&sort=relevance&t=week&limit=10"
         
-        print(f"[Reddit] Searching: {team1} vs {team2}", flush=True)
+        print(f"[Reddit] Searching {flair}: {team1} vs {team2}", flush=True)
         resp = _request_with_retry(url)
         
         if not resp:
@@ -91,23 +110,38 @@ class RedditService:
         try:
             data = resp.json()
             children = data.get('data', {}).get('children', [])
-            print(f"[Reddit] Found {len(children)} threads for {team1} vs {team2}", flush=True)
             
+            matches = []
             for child in children:
                 t_data = child.get('data', {})
-                title = t_data.get('title', '')
+                title = t_data.get('title', '').lower()
                 
-                if "Game Thread" in title:
-                    return {
+                # Validation rules:
+                # 1. Title must contain the full phrase (e.g. "post game thread")
+                # 2. Title must contain both team names
+                flair_lower = flair.lower()
+                if flair_lower in title and team1.lower() in title and team2.lower() in title:
+                    matches.append({
                         "id": t_data.get('id'),
-                        "title": title,
+                        "title": t_data.get('title'),
                         "num_comments": t_data.get('num_comments', 0),
                         "score": t_data.get('score', 0),
                         "url": t_data.get('url'),
-                        "permalink": t_data.get('permalink')
-                    }
-                    
-            return None
+                        "permalink": t_data.get('permalink'),
+                        "thread_type": flair,
+                        "author": t_data.get('author')
+                    })
+            
+            if not matches:
+                return None
+                
+            # Pick the best match: Prioritize those from 'nbabestbot' or with highest comment count
+            # Official PGTs usually have the most comments by far
+            matches.sort(key=lambda x: (x['author'] == 'nbabestbot', x['num_comments']), reverse=True)
+            
+            best = matches[0]
+            print(f"[Reddit] Selected Best Match: '{best['title']}' with {best['num_comments']} comments", flush=True)
+            return best
             
         except Exception as e:
             print(f"[Reddit] Error parsing response: {e}", flush=True)

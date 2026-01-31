@@ -17,6 +17,7 @@ reddit_service = RedditService()
 _mem_cache = {}
 CACHE_TTL = 300  # 5 minutes
 PERMANENT_CACHE_DELAY_HOURS = 2  # Wait 2 hours after game ends before permanent cache
+MATURITY_WINDOW = timedelta(hours=PERMANENT_CACHE_DELAY_HOURS)
 
 def get_from_mem_cache(key: str):
     if key in _mem_cache:
@@ -49,7 +50,30 @@ def get_game_heat(
     if status == 3 and date:
         cached = cache_service.get_cached_social(db_key)
         if cached:
-            return cached
+            # Self-healing logic:
+            # If mature, return directly
+            if cached.get('is_mature', False):
+                return cached
+            
+            # If NOT mature, check if it's time to refresh
+            # NEW: Aggressively refresh if we only have a "Game Thread" but game is FINAL
+            is_pgt = cached.get('thread_type') == "Post Game Thread"
+            cached_at = datetime.fromisoformat(cached.get('fetched_at', datetime.now().isoformat()))
+            minutes_since_fetch = (datetime.now() - cached_at).total_seconds() / 60
+
+            if not is_pgt:
+                # If we only have GT for a FINAL game, try to find PGT every 15 mins
+                if minutes_since_fetch < 15:
+                    return cached
+                print(f"[Social] Attempting GT -> PGT transition for {team1} vs {team2}", flush=True)
+            else:
+                # If we already have PGT but it's not "mature" (2h), wait for normal worker or 2h window
+                end_time = cache_service.get_game_end_time(game_id)
+                if end_time and datetime.now() < end_time + MATURITY_WINDOW:
+                    return cached
+                
+            # Window passed or need PGT refresh! Don't return cached, fall through to re-fetch
+            print(f"[Social] Self-healing heat for {team1} vs {team2} (type: {cached.get('thread_type')})", flush=True)
 
     # 1b. Skip Reddit for Scheduled games - no Game Thread exists yet
     if status == 1:
@@ -74,7 +98,9 @@ def get_game_heat(
             pass
 
     # 4. Search Reddit
-    thread = reddit_service.find_game_thread(team1, team2)
+    # For finished games, prefer Post Game Thread for higher quality comments
+    prefer_pgt = (status == 3)
+    thread = reddit_service.find_game_thread(team1, team2, prefer_pgt=prefer_pgt)
     
     if not thread:
         return {
@@ -100,15 +126,27 @@ def get_game_heat(
         "level": level,
         "trending": count > 500,
         "school_thread_id": thread['id'],
-        "url": thread['url']
+        "url": thread['url'],
+        "thread_type": thread.get('thread_type'),
+        "fetched_at": datetime.now().isoformat(),
+        "is_mature": False  # Will be set to True by Worker after maturity window
     }
     
-    # 5. Save to memory cache only (permanent caching handled by Worker)
+    # 5. Caching logic with maturity protection
+    # Always save to memory cache for immediate access
     set_mem_cache(mem_key, result)
     
-    # Record game end time for Worker to use later
     if status == 3 and game_id:
+        # Record game end time (only records once)
         cache_service.record_game_end_time(game_id)
+        
+        # Check if maturity window has passed before persistent caching
+        end_time = cache_service.get_game_end_time(game_id)
+        if end_time and datetime.now() >= end_time + MATURITY_WINDOW:
+            # Safe to persist - mark as mature
+            result['is_mature'] = True
+            cache_service.cache_social(db_key, result)
+        # Else: within maturity window, only memory cache (no DB write)
 
     return result
 
@@ -130,7 +168,30 @@ def get_game_tweets(
     if status == 3 and date:
         cached = cache_service.get_cached_social(db_key)
         if cached:
-            return cached
+            # Self-healing logic:
+            if cached.get('is_mature', False):
+                return cached
+            
+            # If NOT mature, check if it's time to refresh
+            # NEW: Aggressively refresh if we only have a "Game Thread" but game is FINAL
+            is_pgt = cached.get('thread_type') == "Post Game Thread"
+            cached_at = datetime.now().isoformat() # default if missing
+            if 'fetched_at' in cached: cached_at = cached.get('fetched_at')
+            cached_at_dt = datetime.fromisoformat(cached_at)
+            minutes_since_fetch = (datetime.now() - cached_at_dt).total_seconds() / 60
+
+            if not is_pgt:
+                # Try to find PGT every 15 mins for FINAL games
+                if minutes_since_fetch < 15:
+                    return cached
+                print(f"[Social] Attempting GT -> PGT transition (comments) for {team1} vs {team2}", flush=True)
+            else:
+                end_time = cache_service.get_game_end_time(game_id)
+                if end_time and datetime.now() < end_time + MATURITY_WINDOW:
+                    return cached
+            
+            # Window passed or need PGT refresh! Don't return cached, fall through to re-fetch
+            print(f"[Social] Self-healing comments for {team1} vs {team2} (type: {cached.get('thread_type')})", flush=True)
 
     # 1b. Skip Reddit for Scheduled games - no Game Thread exists yet
     if status == 1:
@@ -153,7 +214,9 @@ def get_game_tweets(
             pass
 
     # 4. Fetch
-    thread = reddit_service.find_game_thread(team1, team2)
+    # For finished games, prefer Post Game Thread for higher quality comments
+    prefer_pgt = (status == 3)
+    thread = reddit_service.find_game_thread(team1, team2, prefer_pgt=prefer_pgt)
     if not thread:
         return {"tweets": []}
         
@@ -168,13 +231,27 @@ def get_game_tweets(
             "id": c['id']
         })
         
-    result = {"tweets": formatted_comments}
+    result = {
+        "tweets": formatted_comments, 
+        "is_mature": False,
+        "thread_type": thread.get('thread_type'),
+        "fetched_at": datetime.now().isoformat()
+    }
     
-    # 5. Save to memory cache only (permanent caching handled by Worker)
+    # 5. Caching logic with maturity protection
+    # Always save to memory cache for immediate access
     set_mem_cache(mem_key, result)
     
-    # Record game end time for Worker to use later
     if status == 3 and game_id:
+        # Record game end time (only records once)
         cache_service.record_game_end_time(game_id)
+        
+        # Check if maturity window has passed before persistent caching
+        end_time = cache_service.get_game_end_time(game_id)
+        if end_time and datetime.now() >= end_time + MATURITY_WINDOW:
+            # Safe to persist - mark as mature
+            result['is_mature'] = True
+            cache_service.cache_social(db_key, result)
+        # Else: within maturity window, only memory cache (no DB write)
         
     return result
