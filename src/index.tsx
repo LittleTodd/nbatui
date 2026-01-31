@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
-import Spinner from 'ink-spinner';
+import BasketballSpinner from './components/BasketballSpinner.js';
 import { format, isSameDay } from 'date-fns';
 import { getOddsKey } from './services/apiClient.js';
 import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
@@ -295,7 +295,7 @@ function App() {
                 connected={connected}
                 loading={loading}
                 gamesCount={games.length}
-                SpinnerComponent={Spinner}
+                SpinnerComponent={BasketballSpinner}
             />
         </Box>
     );
