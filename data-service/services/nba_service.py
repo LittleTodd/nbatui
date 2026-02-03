@@ -5,7 +5,7 @@ Wraps nba_api for game data access
 from typing import Any
 from nba_api.live.nba.endpoints import scoreboard, boxscore, playbyplay
 from nba_api.stats.static import teams
-from nba_api.stats.endpoints import leaguestandings
+from nba_api.stats.endpoints import leaguestandings, commonteamroster, teamgamelog, teaminfocommon, teamdetails, teamplayerdashboard
 from . import cache_service
 
 
@@ -502,7 +502,362 @@ class NBAService:
                 return fallback
             return []
 
-    
+    def get_team_roster(self, team_id: int) -> dict[str, Any]:
+        """
+        Get team roster with player stats.
+        Uses commonteamroster for basic info and teamplayerdashboard for stats.
+        Caches for 24 hours.
+        """
+        cache_key = f"team_roster_{team_id}"
+        
+        # Check cache first (24h TTL)
+        cached = cache_service.get_cached_by_key(cache_key, ttl_hours=24)
+        if cached is not None:
+            return cached
+        
+        try:
+            # Get basic roster info
+            roster = commonteamroster.CommonTeamRoster(team_id=team_id)
+            roster_data = roster.get_dict()
+            
+            players = []
+            coaches = []
+            
+            if 'resultSets' in roster_data:
+                for result_set in roster_data['resultSets']:
+                    name = result_set.get('name', '')
+                    headers = result_set['headers']
+                    rows = result_set['rowSet']
+                    
+                    if name == 'CommonTeamRoster':
+                        for row in rows:
+                            player = dict(zip(headers, row))
+                            players.append({
+                                'playerId': player.get('PLAYER_ID'),
+                                'name': player.get('PLAYER'),
+                                'num': player.get('NUM'),
+                                'position': player.get('POSITION'),
+                                'height': player.get('HEIGHT'),
+                                'weight': player.get('WEIGHT'),
+                                'age': player.get('AGE'),
+                                'exp': player.get('EXP'),
+                                'school': player.get('SCHOOL'),
+                            })
+                    elif name == 'Coaches':
+                        for row in rows:
+                            coach = dict(zip(headers, row))
+                            coaches.append({
+                                'coachId': coach.get('COACH_ID'),
+                                'name': coach.get('COACH_NAME'),
+                                'type': coach.get('COACH_TYPE'),
+                                'isAssistant': coach.get('IS_ASSISTANT'),
+                            })
+            
+            # Try to get player stats from teamplayerdashboard
+            try:
+                dashboard = teamplayerdashboard.TeamPlayerDashboard(team_id=team_id)
+                dash_data = dashboard.get_dict()
+                
+                # Build stats lookup by player_id
+                stats_lookup = {}
+                if 'resultSets' in dash_data:
+                    for result_set in dash_data['resultSets']:
+                        if result_set.get('name') == 'PlayersSeasonTotals':
+                            headers = result_set['headers']
+                            rows = result_set['rowSet']
+                            for row in rows:
+                                player_stats = dict(zip(headers, row))
+                                pid = player_stats.get('PLAYER_ID')
+                                gp = player_stats.get('GP', 1) or 1
+                                # Calculate per-game averages
+                                stats_lookup[pid] = {
+                                    'gp': gp,
+                                    'ppg': round(player_stats.get('PTS', 0) / gp, 1),
+                                    'rpg': round(player_stats.get('REB', 0) / gp, 1),
+                                    'apg': round(player_stats.get('AST', 0) / gp, 1),
+                                    'spg': round(player_stats.get('STL', 0) / gp, 1),
+                                    'bpg': round(player_stats.get('BLK', 0) / gp, 1),
+                                    'fgPct': round(player_stats.get('FG_PCT', 0) * 100, 1),
+                                    'fg3Pct': round(player_stats.get('FG3_PCT', 0) * 100, 1),
+                                    'ftPct': round(player_stats.get('FT_PCT', 0) * 100, 1),
+                                    'min': round(player_stats.get('MIN', 0) / gp, 1),
+                                }
+                
+                # Merge stats into players
+                for player in players:
+                    pid = player.get('playerId')
+                    if pid in stats_lookup:
+                        player['stats'] = stats_lookup[pid]
+                        
+            except Exception as e:
+                print(f"[TeamRoster] Failed to get player stats: {e}")
+            
+            result = {
+                'teamId': team_id,
+                'players': players,
+                'coaches': coaches,
+            }
+            
+            # Cache the result
+            cache_service.cache_by_key(cache_key, result, ttl_hours=24)
+            
+            return result
+        except Exception as e:
+            print(f"[TeamRoster] API failed for team {team_id}: {e}")
+            return {'teamId': team_id, 'players': [], 'coaches': []}
+
+    def get_team_gamelog(self, team_id: int, last_n: int = 10) -> dict[str, Any]:
+        """
+        Get team's recent game log.
+        Uses leaguegamelog to get PLUS_MINUS data for opponent score calculation.
+        Caches for 1 hour.
+        """
+        cache_key = f"team_gamelog_{team_id}_{last_n}"
+        
+        # Check cache (1h TTL)
+        cached = cache_service.get_cached_by_key(cache_key, ttl_hours=1)
+        if cached is not None:
+            return cached
+        
+        try:
+            # Use leaguegamelog which provides PLUS_MINUS
+            from nba_api.stats.endpoints import leaguegamelog
+            
+            # Determine season
+            from datetime import datetime
+            now = datetime.now()
+            season_year = now.year if now.month >= 10 else now.year - 1
+            
+            gamelog = leaguegamelog.LeagueGameLog(season=season_year)
+            log_data = gamelog.get_dict()
+            
+            games = []
+            
+            if 'resultSets' in log_data and len(log_data['resultSets']) > 0:
+                result_set = log_data['resultSets'][0]
+                headers = result_set['headers']
+                rows = result_set['rowSet']
+                
+                # Build a map of all games by GAME_ID for opponent lookup
+                all_games_by_id: dict[str, list] = {}
+                for row in rows:
+                    game = dict(zip(headers, row))
+                    game_id = game.get('GAME_ID')
+                    if game_id:
+                        if game_id not in all_games_by_id:
+                            all_games_by_id[game_id] = []
+                        all_games_by_id[game_id].append(game)
+                
+                # Filter for the requested team and get last N games
+                team_games = [dict(zip(headers, row)) for row in rows if row[headers.index('TEAM_ID')] == team_id]
+                
+                # Sort by date descending (newest first)
+                team_games.sort(key=lambda x: x.get('GAME_DATE', ''), reverse=True)
+                
+                for game in team_games[:last_n]:
+                    pts = game.get('PTS') or 0
+                    plus_minus = game.get('PLUS_MINUS') or 0
+                    game_id = game.get('GAME_ID')
+                    
+                    # Try to find opponent score from the same game
+                    opp_pts = 0
+                    if game_id and game_id in all_games_by_id:
+                        for g in all_games_by_id[game_id]:
+                            if g.get('TEAM_ID') != team_id:
+                                opp_pts = g.get('PTS') or 0
+                                break
+                    
+                    # Fallback: calculate from plus_minus if opponent not found
+                    if opp_pts == 0 and plus_minus != 0:
+                        opp_pts = pts - plus_minus
+                    
+                    games.append({
+                        'gameId': game_id,
+                        'date': game.get('GAME_DATE'),
+                        'matchup': game.get('MATCHUP'),
+                        'result': game.get('WL'),
+                        'wins': 0,  # Not available in leaguegamelog
+                        'losses': 0,
+                        'points': pts,
+                        'oppPoints': opp_pts,
+                        'plusMinus': plus_minus,
+                        'fgm': game.get('FGM'),
+                        'fga': game.get('FGA'),
+                        'fgPct': round((game.get('FG_PCT') or 0) * 100, 1),
+                        'fg3m': game.get('FG3M'),
+                        'fg3a': game.get('FG3A'),
+                        'fg3Pct': round((game.get('FG3_PCT') or 0) * 100, 1),
+                        'ftm': game.get('FTM'),
+                        'fta': game.get('FTA'),
+                        'ftPct': round((game.get('FT_PCT') or 0) * 100, 1),
+                        'reb': game.get('REB'),
+                        'ast': game.get('AST'),
+                        'stl': game.get('STL'),
+                        'blk': game.get('BLK'),
+                        'tov': game.get('TOV'),
+                    })
+            
+            # Calculate current streak
+            streak = 0
+            streak_type = ''
+            if games:
+                first_result = games[0].get('result')
+                streak_type = first_result
+                for g in games:
+                    if g.get('result') == first_result:
+                        streak += 1
+                    else:
+                        break
+            
+            result = {
+                'teamId': team_id,
+                'games': games,
+                'streak': streak,
+                'streakType': streak_type,  # 'W' or 'L'
+            }
+            
+            # Cache the result
+            cache_service.cache_by_key(cache_key, result, ttl_hours=1)
+            
+            return result
+        except Exception as e:
+            print(f"[TeamGamelog] API failed for team {team_id}: {e}")
+            return {'teamId': team_id, 'games': [], 'streak': 0, 'streakType': ''}
+
+    def get_team_info(self, team_id: int) -> dict[str, Any]:
+        """
+        Get team details and season info.
+        Uses teamdetails for background info and teaminfocommon for season stats.
+        Caches for 7 days.
+        """
+        cache_key = f"team_info_{team_id}"
+        
+        # Check cache (7 day TTL)
+        cached = cache_service.get_cached_by_key(cache_key, ttl_hours=168)
+        if cached is not None:
+            return cached
+        
+        try:
+            result = {
+                'teamId': team_id,
+                'background': {},
+                'seasonInfo': {},
+                'seasonRanks': {},
+                'championships': [],
+                'confTitles': [],
+                'divTitles': [],
+                'retiredNumbers': [],
+                'hallOfFame': [],
+            }
+            
+            # Get team details (background, history, awards)
+            try:
+                details = teamdetails.TeamDetails(team_id=team_id)
+                details_data = details.get_dict()
+                
+                if 'resultSets' in details_data:
+                    for result_set in details_data['resultSets']:
+                        name = result_set.get('name', '')
+                        headers = result_set['headers']
+                        rows = result_set['rowSet']
+                        
+                        if name == 'TeamBackground' and rows:
+                            bg = dict(zip(headers, rows[0]))
+                            result['background'] = {
+                                'nickname': bg.get('NICKNAME'),
+                                'city': bg.get('CITY'),
+                                'arena': bg.get('ARENA'),
+                                'arenaCapacity': bg.get('ARENACAPACITY'),
+                                'owner': bg.get('OWNER'),
+                                'gm': bg.get('GENERALMANAGER'),
+                                'headCoach': bg.get('HEADCOACH'),
+                                'dLeagueAffiliate': bg.get('DLEAGUEAFFILIATION'),
+                                'yearFounded': bg.get('YEARFOUNDED'),
+                            }
+                        elif name == 'TeamAwardsChampionships':
+                            result['championships'] = [
+                                {'year': dict(zip(headers, row)).get('YEARAWARDED')}
+                                for row in rows
+                            ]
+                        elif name == 'TeamAwardsConf':
+                            result['confTitles'] = [
+                                {'year': dict(zip(headers, row)).get('YEARAWARDED')}
+                                for row in rows
+                            ]
+                        elif name == 'TeamAwardsDiv':
+                            result['divTitles'] = [
+                                {'year': dict(zip(headers, row)).get('YEARAWARDED')}
+                                for row in rows
+                            ]
+                        elif name == 'TeamRetired':
+                            for row in rows:
+                                retired = dict(zip(headers, row))
+                                result['retiredNumbers'].append({
+                                    'playerId': retired.get('PLAYERID'),
+                                    'player': retired.get('PLAYER'),
+                                    'jersey': retired.get('JERSEY'),
+                                    'position': retired.get('POSITION'),
+                                })
+                        elif name == 'TeamHof':
+                            for row in rows:
+                                hof = dict(zip(headers, row))
+                                result['hallOfFame'].append({
+                                    'playerId': hof.get('PLAYERID'),
+                                    'player': hof.get('PLAYER'),
+                                    'position': hof.get('POSITION'),
+                                    'year': hof.get('YEAR'),
+                                })
+            except Exception as e:
+                print(f"[TeamInfo] TeamDetails failed: {e}")
+            
+            # Get team season info (record, rankings)
+            try:
+                info = teaminfocommon.TeamInfoCommon(team_id=team_id)
+                info_data = info.get_dict()
+                
+                if 'resultSets' in info_data:
+                    for result_set in info_data['resultSets']:
+                        name = result_set.get('name', '')
+                        headers = result_set['headers']
+                        rows = result_set['rowSet']
+                        
+                        if name == 'TeamInfoCommon' and rows:
+                            info_row = dict(zip(headers, rows[0]))
+                            result['seasonInfo'] = {
+                                'seasonYear': info_row.get('SEASON_YEAR'),
+                                'teamCity': info_row.get('TEAM_CITY'),
+                                'teamName': info_row.get('TEAM_NAME'),
+                                'tricode': info_row.get('TEAM_ABBREVIATION'),
+                                'conference': info_row.get('TEAM_CONFERENCE'),
+                                'division': info_row.get('TEAM_DIVISION'),
+                                'wins': info_row.get('W'),
+                                'losses': info_row.get('L'),
+                                'pct': round((info_row.get('PCT') or 0), 3),
+                                'confRank': info_row.get('CONF_RANK'),
+                                'divRank': info_row.get('DIV_RANK'),
+                            }
+                        elif name == 'TeamSeasonRanks' and rows:
+                            ranks_row = dict(zip(headers, rows[0]))
+                            result['seasonRanks'] = {
+                                'ptsRank': ranks_row.get('PTS_RANK'),
+                                'ptsPg': ranks_row.get('PTS_PG'),
+                                'rebRank': ranks_row.get('REB_RANK'),
+                                'rebPg': ranks_row.get('REB_PG'),
+                                'astRank': ranks_row.get('AST_RANK'),
+                                'astPg': ranks_row.get('AST_PG'),
+                                'oppPtsRank': ranks_row.get('OPP_PTS_RANK'),
+                                'oppPtsPg': ranks_row.get('OPP_PTS_PG'),
+                            }
+            except Exception as e:
+                print(f"[TeamInfo] TeamInfoCommon failed: {e}")
+            
+            # Cache the result
+            cache_service.cache_by_key(cache_key, result, ttl_hours=168)
+            
+            return result
+        except Exception as e:
+            print(f"[TeamInfo] API failed for team {team_id}: {e}")
+            return {'teamId': team_id, 'background': {}, 'seasonInfo': {}, 'seasonRanks': {}}    
     def _format_games(self, games: list[dict]) -> list[dict[str, Any]]:
         """Format raw game data into a cleaner structure"""
         formatted = []

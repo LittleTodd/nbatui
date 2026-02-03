@@ -63,6 +63,13 @@ def _get_connection() -> sqlite3.Connection:
             cached_at TEXT NOT NULL
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS generic_cache (
+            key TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        )
+    ''')
     conn.commit()
     return conn
 
@@ -481,6 +488,63 @@ def get_cached_standings_fallback() -> Optional[List[Dict[str, Any]]]:
         conn.close()
         
         if row:
+            return json.loads(row[0])
+        return None
+    except Exception:
+        return None
+
+
+# ==================== GENERIC KEY-VALUE CACHE ====================
+
+def cache_by_key(key: str, data: Dict[str, Any], ttl_hours: int = 24) -> None:
+    """
+    Cache arbitrary data by key.
+    
+    Args:
+        key: Unique cache key
+        data: Data dictionary to cache
+        ttl_hours: Time-to-live in hours (stored for reference, checked on read)
+    """
+    if not data:
+        return
+    
+    try:
+        conn = _get_connection()
+        conn.execute(
+            'INSERT OR REPLACE INTO generic_cache (key, data, cached_at) VALUES (?, ?, ?)',
+            (key, json.dumps(data), datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def get_cached_by_key(key: str, ttl_hours: int = 24) -> Optional[Dict[str, Any]]:
+    """
+    Get cached data by key with TTL check.
+    
+    Args:
+        key: Cache key
+        ttl_hours: Maximum age of cache in hours
+        
+    Returns:
+        Data if cached and not expired, None otherwise
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.execute(
+            'SELECT data, cached_at FROM generic_cache WHERE key = ?',
+            (key,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            cached_at = datetime.fromisoformat(row[1])
+            # Check if cache is stale
+            if datetime.now() - cached_at > timedelta(hours=ttl_hours):
+                return None  # Cache expired
             return json.loads(row[0])
         return None
     except Exception:

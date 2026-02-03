@@ -152,5 +152,40 @@ def get_game_score_curve(game_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/team/{team_id}/roster")
+def get_team_roster(team_id: int):
+    """
+    Get team roster with player stats.
+    Returns player list with basic info and season averages.
+    """
+    try:
+        data = nba_service.get_team_roster(team_id)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/team/{team_id}/gamelog")
+def get_team_gamelog(team_id: int, last_n: int = 10):
+    """
+    Get team's recent game log.
+    Returns last N games with stats.
+    """
+    try:
+        data = nba_service.get_team_gamelog(team_id, last_n=last_n)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/team/{team_id}/info")
+def get_team_info(team_id: int):
+    """
+    Get team details and season info.
+    Returns background, season stats, awards, and retired numbers.
+    """
+    try:
+        data = nba_service.get_team_info(team_id)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

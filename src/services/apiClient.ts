@@ -426,3 +426,179 @@ export async function fetchGameTweets(team1: string, team2: string, status?: num
         return [];
     }
 }
+
+// ==================== TEAM DATA ====================
+
+export interface PlayerStats {
+    gp: number;
+    ppg: number;
+    rpg: number;
+    apg: number;
+    spg: number;
+    bpg: number;
+    fgPct: number;
+    fg3Pct: number;
+    ftPct: number;
+    min: number;
+}
+
+export interface RosterPlayer {
+    playerId: number;
+    name: string;
+    num: string;
+    position: string;
+    height: string;
+    weight: string;
+    age: number;
+    exp: string;
+    school: string;
+    stats?: PlayerStats;
+}
+
+export interface Coach {
+    coachId: number;
+    name: string;
+    type: string;
+    isAssistant: number;
+}
+
+export interface TeamRoster {
+    teamId: number;
+    players: RosterPlayer[];
+    coaches: Coach[];
+}
+
+export interface GameLogEntry {
+    gameId: string;
+    date: string;
+    matchup: string;
+    result: 'W' | 'L';
+    wins: number;
+    losses: number;
+    points: number;
+    oppPoints: number;  // Opponent's score
+    plusMinus: number;
+    fgm: number;
+    fga: number;
+    fgPct: number;
+    fg3m: number;
+    fg3a: number;
+    fg3Pct: number;
+    ftm: number;
+    fta: number;
+    ftPct: number;
+    reb: number;
+    ast: number;
+    stl: number;
+    blk: number;
+    tov: number;
+}
+
+export interface TeamGamelog {
+    teamId: number;
+    games: GameLogEntry[];
+    streak: number;
+    streakType: 'W' | 'L' | '';
+}
+
+export interface TeamBackground {
+    nickname: string;
+    city: string;
+    arena: string;
+    arenaCapacity: string;
+    owner: string;
+    gm: string;
+    headCoach: string;
+    dLeagueAffiliate: string;
+    yearFounded: number;
+}
+
+export interface TeamSeasonInfo {
+    seasonYear: string;
+    teamCity: string;
+    teamName: string;
+    tricode: string;
+    conference: string;
+    division: string;
+    wins: number;
+    losses: number;
+    pct: number;
+    confRank: number;
+    divRank: number;
+}
+
+export interface TeamSeasonRanks {
+    ptsRank: number;
+    ptsPg: number;
+    rebRank: number;
+    rebPg: number;
+    astRank: number;
+    astPg: number;
+    oppPtsRank: number;
+    oppPtsPg: number;
+}
+
+export interface RetiredNumber {
+    playerId: number;
+    player: string;
+    jersey: string;
+    position: string;
+}
+
+export interface HallOfFamer {
+    playerId: number;
+    player: string;
+    position: string;
+    year: number;
+}
+
+export interface TeamInfo {
+    teamId: number;
+    background: TeamBackground;
+    seasonInfo: TeamSeasonInfo;
+    seasonRanks: TeamSeasonRanks;
+    championships: { year: number }[];
+    confTitles: { year: number }[];
+    divTitles: { year: number }[];
+    retiredNumbers: RetiredNumber[];
+    hallOfFame: HallOfFamer[];
+}
+
+/**
+ * Fetch team roster with player stats
+ */
+export async function fetchTeamRoster(teamId: number): Promise<TeamRoster | null> {
+    try {
+        const res = await fetch(`${BASE_URL}/games/team/${teamId}/roster`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as TeamRoster;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Fetch team's recent game log
+ */
+export async function fetchTeamGamelog(teamId: number, lastN: number = 10): Promise<TeamGamelog | null> {
+    try {
+        const res = await fetch(`${BASE_URL}/games/team/${teamId}/gamelog?last_n=${lastN}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as TeamGamelog;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Fetch team details and season info
+ */
+export async function fetchTeamInfo(teamId: number): Promise<TeamInfo | null> {
+    try {
+        const res = await fetch(`${BASE_URL}/games/team/${teamId}/info`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as TeamInfo;
+    } catch {
+        return null;
+    }
+}

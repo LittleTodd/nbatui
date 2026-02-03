@@ -124,6 +124,10 @@ function App() {
         }
 
         if (key.escape || input === 'q') {
+            // If standings is visible, let StandingsSidebar handle Esc
+            if (showStandings) {
+                return; // StandingsSidebar has its own Esc handler via onClose
+            }
             exit();
             return;
         }
@@ -144,11 +148,14 @@ function App() {
         }
 
         if (key.return) {
-            if (games.length > 0) {
+            if (games.length > 0 && !showStandings) {
                 setView('detail');
             }
             return;
         }
+
+        // Skip map navigation when standings sidebar is visible
+        if (showStandings) return;
 
         if (key.upArrow) {
             moveSelection('up');
@@ -287,7 +294,7 @@ function App() {
                     )}
                 </Box>
 
-                <StandingsSidebar visible={showStandings} />
+                <StandingsSidebar visible={showStandings} onClose={() => setShowStandings(false)} />
             </Box>
 
             {/* Footer */}
