@@ -2,10 +2,14 @@
  * PlayByPlayStream Component
  * Displays a scrolling stream of play-by-play events
  * Classic terminal color scheme - readable and easy on the eyes
+ * 
+ * For LIVE games: Shows animated effects for exciting plays (dunks, blocks, steals, buzzer beaters)
+ * For finished games: Static display, no animations
  */
 import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
+import { AnimatedText, type AnimationType } from './ui/AnimatedText.js';
 
 export interface PlayByPlayAction {
     actionNumber: number;
@@ -83,6 +87,25 @@ function formatPeriod(period: number, periodType: string): string {
         return `OT${period - 4}`;
     }
     return `Q${period}`;
+}
+
+/**
+ * Determine animation type for highlight events (only used for live games)
+ */
+function getAnimationType(action: DisplayAction): AnimationType {
+    // Buzzer beater - neon effect (made shot at 00:00)
+    if (action.shotResult === 'Made' && parseGameClock(action.clock) === '00:00') {
+        return 'neon';
+    }
+    // Blocks and steals - glitch effect
+    if (action.actionType === 'block' || action.actionType === 'steal') {
+        return 'glitch';
+    }
+    // Dunks - glitch effect
+    if (action.actionType === '2pt' && action.description?.toLowerCase().includes('dunk')) {
+        return 'glitch';
+    }
+    return 'none';
 }
 
 function consolidateActions(actions: PlayByPlayAction[]): DisplayAction[] {
@@ -312,7 +335,24 @@ export function PlayByPlayStream({
                                     </Box>
                                 ) : (
                                     <>
-                                        <Text color={descColor} wrap="truncate-end">{action.description}</Text>
+                                        {/* Animated text for live highlight events */}
+                                        {(() => {
+                                            const isNewestAction = idx === 0 && scrollOffset === 0;
+                                            const animationType = getAnimationType(action);
+                                            const shouldAnimate = isLive && isNewestAction && animationType !== 'none';
+
+                                            return shouldAnimate ? (
+                                                <AnimatedText
+                                                    text={action.description}
+                                                    animationType={animationType}
+                                                    isActive={true}
+                                                    fallbackColor={descColor}
+                                                    speed={150}
+                                                />
+                                            ) : (
+                                                <Text color={descColor} wrap="truncate-end">{action.description}</Text>
+                                            );
+                                        })()}
                                         {action.shotResult === 'Made' && action.actionType === '3pt' && (
                                             <Text color="green" bold> +3</Text>
                                         )}
