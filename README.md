@@ -10,34 +10,21 @@
 ## 🔥 最近更新 | What's New
 
 ### ✨ 新功能 | New Features
-- **全新配色系统 (Enhanced Team Colors)**: 为所有 30 支球队更新了高对比度、更美观的终端配色方案。
-  - Updated high-contrast, stylized color schemes for all 30 NBA teams.
-- **获胜概率 & 比赛标签 (Win Probability & Labels)**: 新增赛前获胜概率条及季后赛/常规赛标签。
-  - Added pre-game win probability bars and game type indicators.
-- **动态比分效果 (Breathing Score)**: 进行中比赛的比分增加呼吸灯动画效果。
-  - Added breathing animation for live scores.
+- **球队详情中心 (Team Detail Hub)**: 在积分榜中选中球队即可查看详细信息，包含：
+  - Select a team in Standings to view detailed info hub:
+  - 🏀 **阵容 (Roster)**: 球员名单及详细数据 (Player list & stats)
+  - 📊 **战绩 (Record)**: 近期比赛结果与赛季排名 (Recent games & rankings)
+  - 🏆 **信息 (Info)**: 球队历史荣誉与背景 (Team history & background)
+- **动画速度调节 (Glitch Speed Control)**: 根据喜好调整界面故障艺术动画的速度。
+  - Adjustable speed settings for UI glitch animations.
 
 ### 🚀 改进 | Improvements
-- **性能优化 (Performance)**: 文字直播 (Play-by-Play) 刷新率优化为 15 秒（仅在活跃时）。
-  - Optimized Play-by-Play refresh rate to 15s (active only).
-- **UI 交互**: 
-  - 改进球员数据卡片 (Player Stats Card)：布局更紧凑，支持 `Esc` 快速关闭，优化焦点管理。
-  - Refined Player Stats Card: compact layout, `Esc` to close, better focus management.
-  - 优化在场球员 (LiveOnCourt) 面板对齐及切换体验。
-  - Improved alignment and switching experience for LiveOnCourt panel.
+- **缓存优化 (Smart Caching)**: 实现了球队详情数据的智能缓存，大幅提升浏览速度。
+  - Implemented smart caching for team details to enhance navigation speed.
 
 ### 🐛 修复 | Bug Fixes
-- **时区显示**: 修复比赛时间未正确显示为本地时间的问题。
-  - Fixed game time display issues (local timezone).
-- **图表逻辑**: 修正 Lead Tracker 图表在 "Underdog" 领先时的填充逻辑错误。
-  - Corrected filling logic for Lead Tracker charts when underdog leads.
-- **稳定性**: 修复长时间停留在详情页导致的界面卡死问题。
-  - Fixed app freeze issue after long duration on detail page.
-- **数据展示**: 
-  - 修正罚球文字直播顺序颠倒问题。
-  - Fixed reversed order of free throw play-by-play events.
-  - 修复地图模式下部分球队（如 OKC）颜色暗淡的问题。
-  - Fixed dim colors for specific teams on map view.
+- **数据显示 (Data Display)**: 修复比分和日期的显示问题及 UI 布局微调。
+  - Fixed score, date display issues and minor UI layout tweaks.
 
 ---
 
@@ -56,6 +43,14 @@
 - 球队数据对比 (Team Stats Comparison)
 - Top 10 球员表现 (Top 10 Performers)
 - Reddit r/nba 热门评论 (Social Buzz from r/nba)
+
+### 球队中心 | Team Hub
+- 完整阵容名单与球员数据
+- Full roster list with player statistics
+- 赛季战绩走势与近期比赛结果
+- Season record trends & recent game results
+- 球队历史荣誉墙
+- Team history & honors wall
 
 ### 数据源 | Data Sources
 - NBA 官方 API (实时比分、球员统计)
@@ -100,9 +95,11 @@ chmod +x setup.sh
 
 | 按键 Key | 功能 Action |
 |----------|-------------|
-| `← / →` | 切换日期 Change date |
-| `↑ / ↓` | 选择比赛 Select game |
+| `← / →` | 切换日期/标签 Change date/tab |
+| `↑ / ↓` | 选择比赛/滚动 Select/Scroll |
 | `Enter` | 查看详情 View detail |
+| `Tab` | 切换视图/页面 Switch View/Tab |
+| `1 / 2 / 3` | 详情页标签 Quick Tabs |
 | `/` | 搜索球队 Search team |
 | `s` | 切换积分榜 Toggle standings |
 | `r` | 刷新数据 Refresh |
