@@ -78,16 +78,37 @@ export const useGameStore = create<GameState>((set, get) => ({
                 ]);
             }
 
+            let newSelectedIndex = 0;
+            const currentSelectedIndex = get().selectedIndex;
+            // Determine the new selected index
+            if (isBackgroundRefresh) {
+                // Try to persist the currently selected game
+                const currentGames = get().games;
+                const selectedGameId = currentGames[currentSelectedIndex]?.gameId;
+
+                if (selectedGameId) {
+                    const foundIndex = gamesData.findIndex(g => g.gameId === selectedGameId);
+                    if (foundIndex !== -1) {
+                        newSelectedIndex = foundIndex;
+                    } else {
+                        // Game no longer exists (rare), keep index bounded
+                        newSelectedIndex = Math.min(currentSelectedIndex, Math.max(0, gamesData.length - 1));
+                    }
+                } else {
+                    newSelectedIndex = Math.min(currentSelectedIndex, Math.max(0, gamesData.length - 1));
+                }
+            } else {
+                // New date or manual load, reset to 0
+                newSelectedIndex = 0;
+            }
+
             set({
                 games: gamesData,
                 odds: oddsData,
                 lastUpdated: new Date(),
-                loading: false
+                loading: false,
+                selectedIndex: newSelectedIndex
             });
-
-            if (!isBackgroundRefresh && gamesData.length > 0) {
-                set({ selectedIndex: 0 });
-            }
 
             // Trigger background heat fetch
             get().fetchHeatForGames();
