@@ -337,9 +337,15 @@ export function PlayByPlayStream({
                                     <>
                                         {/* Animated text for live highlight events */}
                                         {(() => {
-                                            const isNewestAction = idx === 0 && scrollOffset === 0;
+                                            // Animation fix: Check if action is part of the latest moment (same period + clock)
+                                            // This ensures we animate even if other events (fouls, subs) happened in the same second and pushed this down
+                                            const newestAction = displayActions[0];
+                                            const isLatestMoment = newestAction &&
+                                                action.period === newestAction.period &&
+                                                action.clock === newestAction.clock;
+
                                             const animationType = getAnimationType(action);
-                                            const shouldAnimate = isLive && isNewestAction && animationType !== 'none';
+                                            const shouldAnimate = isLive && scrollOffset === 0 && isLatestMoment && animationType !== 'none';
 
                                             return shouldAnimate ? (
                                                 <AnimatedText
