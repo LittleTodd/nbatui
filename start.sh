@@ -5,6 +5,10 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Ensure Bun is in PATH
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
 # Kill child processes (background python) on exit
 trap 'kill 0' SIGINT
 

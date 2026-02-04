@@ -21,13 +21,17 @@ if [ ! -d "venv" ]; then
     python3 -m venv venv
 fi
 
-source venv/bin/activate
 echo "Installing Python dependencies..."
-pip install -r requirements.txt
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r requirements.txt
 cd ..
 
 # 2. Frontend Setup (Bun)
 echo -e "\n${YELLOW}Setting up Frontend (Bun)...${NC}"
+
+# Set up Bun paths (in case just installed or already installed)
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
 
 if ! command -v bun &> /dev/null; then
     echo "Bun is not installed."
@@ -35,7 +39,7 @@ if ! command -v bun &> /dev/null; then
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         curl -fsSL https://bun.sh/install | bash
-        # Source bun config if added to rc, or try to use direct path
+        # Reload PATH after installation
         export BUN_INSTALL="$HOME/.bun"
         export PATH="$BUN_INSTALL/bin:$PATH"
     else
