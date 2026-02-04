@@ -23,13 +23,28 @@ interface FooterProps {
 }
 
 export function Footer({ connected, loading, gamesCount, SpinnerComponent }: FooterProps) {
+    // Determine connection status display
+    const getConnectionStatus = () => {
+        if (loading && !connected) {
+            // Still initializing - show connecting state
+            return (
+                <Box>
+                    <Text color="yellow">● Connecting</Text>
+                    <Text color="yellow"> <SpinnerComponent type="dots" /></Text>
+                </Box>
+            );
+        } else if (connected) {
+            return <Text color="green">● Connected</Text>;
+        } else {
+            return <Text color="red">● Disconnected</Text>;
+        }
+    };
+
     return (
         <Box justifyContent="space-between" paddingX={1} marginTop={1}>
             <Box>
-                <Text color={connected ? 'green' : 'red'}>
-                    {connected ? '● Connected' : '● Disconnected'}
-                </Text>
-                {loading && <Text color="yellow"> <SpinnerComponent type="dots" /></Text>}
+                {getConnectionStatus()}
+                {loading && connected && <Text color="yellow"> <SpinnerComponent type="dots" /></Text>}
             </Box>
             <Text dimColor>{gamesCount} Games • ←/→: Date | ↑/↓: Select | /: Search | s: Standings</Text>
             <Text dimColor>Enter: Detail | r: Refresh | q: Quit</Text>

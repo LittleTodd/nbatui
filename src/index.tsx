@@ -223,7 +223,29 @@ function App() {
             <Box flexDirection="row" flexGrow={1} justifyContent="center" marginTop={1}>
                 {/* ... Main Content ... */}
                 <Box flexDirection="column" alignItems="center">
-                    {games.length === 0 && !loading ? (
+                    {/* Initial Loading State - Show loading animation */}
+                    {loading && games.length === 0 ? (
+                        <Box
+                            flexDirection="column"
+                            alignItems="center"
+                            justifyContent="center"
+                            height={mapHeight}
+                            borderStyle="round"
+                            borderColor="cyan"
+                            paddingX={6}
+                            paddingY={2}
+                        >
+                            <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
+                            <Box marginTop={2}>
+                                <BasketballSpinner />
+                                <Text color="yellow"> Loading game data...</Text>
+                            </Box>
+                            <Box marginTop={1}>
+                                <Text dimColor>Fetching today's NBA schedule</Text>
+                            </Box>
+                        </Box>
+                    ) : games.length === 0 && !loading ? (
+                        /* No Games State - Only show when loading is complete */
                         <Box
                             flexDirection="column"
                             alignItems="center"
@@ -245,6 +267,7 @@ function App() {
                             </Box>
                         </Box>
                     ) : (
+                        /* Map View - Show when we have games */
                         mapWithGames.map((line, rowIdx) => (
                             <MapLine
                                 key={rowIdx}
@@ -258,6 +281,7 @@ function App() {
                             />
                         ))
                     )}
+
 
                     {isSearching ? (
                         <Box flexDirection="column" marginTop={1} alignSelf="center">
