@@ -16,7 +16,18 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 cd data-service
+
+# Check if venv exists and is valid (works on this machine)
+NEED_NEW_VENV=false
 if [ ! -d "venv" ]; then
+    NEED_NEW_VENV=true
+elif ! ./venv/bin/python3 --version &> /dev/null; then
+    echo -e "${YELLOW}Existing venv is broken (from different machine?), recreating...${NC}"
+    rm -rf venv
+    NEED_NEW_VENV=true
+fi
+
+if [ "$NEED_NEW_VENV" = true ]; then
     echo "Creating virtual environment..."
     python3 -m venv venv
 fi
