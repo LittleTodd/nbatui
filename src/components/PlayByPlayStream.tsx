@@ -51,6 +51,7 @@ interface PlayByPlayStreamProps {
     awayScore?: number;
     isLive?: boolean;
     maxItems?: number;
+    gameStatusText?: string;
 }
 
 // Victory message templates - randomly selected
@@ -136,7 +137,7 @@ function consolidateActions(actions: PlayByPlayAction[]): DisplayAction[] {
                 if (name) subEntry.subOut.push(name);
             } else if (desc.includes('for')) {
                 const match = desc.match(/(.+?)\s+for\s+(.+)/i);
-                if (match) {
+                if (match && match[1] && match[2]) {
                     subEntry.subIn.push(match[1].trim());
                     subEntry.subOut.push(match[2].trim());
                 }
@@ -200,7 +201,8 @@ export function PlayByPlayStream({
     homeScore,
     awayScore,
     isLive = false,
-    maxItems = 10
+    maxItems = 10,
+    gameStatusText = ''
 }: PlayByPlayStreamProps) {
     const [scrollOffset, setScrollOffset] = useState(0);
 
@@ -345,7 +347,13 @@ export function PlayByPlayStream({
                                                 action.clock === newestAction.clock;
 
                                             const animationType = getAnimationType(action);
-                                            const shouldAnimate = isLive && scrollOffset === 0 && isLatestMoment && animationType !== 'none';
+                                            // Animation fix: Stop animations if game is in a break (Halftime, End of Period)
+                                            // This prevents "glitch" or "neon" from playing indefinitely during 15-min halftime
+                                            const isBreak = gameStatusText?.toLowerCase().includes('halftime') ||
+                                                gameStatusText?.toLowerCase().includes('end') ||
+                                                gameStatusText?.toLowerCase().includes('final');
+
+                                            const shouldAnimate = isLive && !isBreak && scrollOffset === 0 && isLatestMoment && animationType !== 'none';
 
                                             return shouldAnimate ? (
                                                 <AnimatedText

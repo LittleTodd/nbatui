@@ -355,6 +355,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                         homeScore={game.homeTeam.score}
                         awayScore={game.awayTeam.score}
                         isLive={game.gameStatus === 2}
+                        gameStatusText={boxScore?.gameStatusText || game.gameStatusText}
                     />
                 ) : (
                     <Box flexDirection="column">
