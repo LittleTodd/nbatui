@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-import { type Game, type GameOdds, fetchTodayGames, fetchGamesByDate, checkHealth, fetchPolymarketOdds, getOddsKey, type SocialHeat as HeatData } from '../services/apiClient.js';
+import { type Game, type GameOdds, fetchGamesByDate, checkHealth, fetchPolymarketOdds, consumeApiDiagnostics, type ApiClientDiagnostic, type SocialHeat as HeatData } from '../services/apiClient.js';
 import { format, subDays, isSameDay } from 'date-fns';
 import { getTeamPosition } from '../data/teamCoords.js';
 
@@ -12,12 +12,15 @@ interface GameState {
     connected: boolean;
     loading: boolean;
     lastUpdated: Date;
+    dataWarning: string | null;
+    dataWarningDetails: string[];
 
     // Actions
     setGames: (games: Game[]) => void;
     setCurrentDate: (date: Date) => void;
     setSelectedIndex: (index: number) => void;
     setLoading: (loading: boolean) => void;
+    setDataWarning: (warning: string | null, details?: string[]) => void;
     checkConnection: () => Promise<void>;
     loadGamesForDate: (date: Date, isBackgroundRefresh?: boolean) => Promise<void>;
     refreshGames: () => Promise<void>;
@@ -37,15 +40,29 @@ export const useGameStore = create<GameState>((set, get) => ({
     connected: false,
     loading: true,
     lastUpdated: new Date(),
+    dataWarning: null,
+    dataWarningDetails: [],
 
     setGames: (games) => set({ games }),
     setCurrentDate: (date) => set({ currentDate: date }),
     setSelectedIndex: (index) => set({ selectedIndex: index }),
     setLoading: (loading) => set({ loading }),
+    setDataWarning: (warning, details = []) => set({ dataWarning: warning, dataWarningDetails: details }),
 
     checkConnection: async () => {
         const isHealthy = await checkHealth();
         set({ connected: isHealthy });
+
+        const diagnostics = consumeApiDiagnostics();
+        if (diagnostics.length > 0) {
+            const latest = diagnostics[diagnostics.length - 1];
+            const recent = diagnostics.slice(-3).map(d => `${d.operation} (${d.message})`);
+            set({
+                dataWarning: `Connection issue: ${latest.message}`,
+                dataWarningDetails: recent
+            });
+            return;
+        }
     },
 
     loadGamesForDate: async (date: Date, isBackgroundRefresh = false) => {
@@ -110,12 +127,24 @@ export const useGameStore = create<GameState>((set, get) => ({
                 selectedIndex: newSelectedIndex
             });
 
+            const diagnostics = consumeApiDiagnostics();
+            if (diagnostics.length > 0) {
+                const latest = diagnostics[diagnostics.length - 1];
+                const recent = diagnostics.slice(-3).map(d => `${d.operation} (${d.message})`);
+                set({
+                    dataWarning: `Data degraded: ${latest.operation}`,
+                    dataWarningDetails: recent
+                });
+            } else {
+                set({ dataWarning: null, dataWarningDetails: [] });
+            }
+
             // Trigger background heat fetch
             get().fetchHeatForGames();
 
         } catch (error) {
             console.error("Failed to load games:", error);
-            set({ loading: false });
+            set({ loading: false, dataWarning: 'Data load failed', dataWarningDetails: ['loadGamesForDate exception'] });
         }
     },
 
@@ -216,5 +245,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
 
         set({ socialHeat: heatMap });
+
+        const diagnostics = consumeApiDiagnostics();
+        if (diagnostics.length > 0) {
+            const latest = diagnostics[diagnostics.length - 1];
+            const recent = diagnostics.slice(-3).map((d: ApiClientDiagnostic) => `${d.operation} (${d.message})`);
+            set({
+                dataWarning: `Social data unavailable for some games`,
+                dataWarningDetails: recent
+            });
+        }
     },
 }));

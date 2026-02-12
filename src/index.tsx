@@ -36,6 +36,7 @@ function App() {
     const loading = useGameStore(state => state.loading);
     const odds = useGameStore(state => state.odds);
     const socialHeat = useGameStore(state => state.socialHeat);
+    const dataWarning = useGameStore(state => state.dataWarning);
 
     // Store Actions
     const loadGamesForDate = useGameStore(state => state.loadGamesForDate);
@@ -326,6 +327,7 @@ function App() {
                 connected={connected}
                 loading={loading}
                 gamesCount={games.length}
+                warning={dataWarning}
                 SpinnerComponent={BasketballSpinner}
             />
         </Box>

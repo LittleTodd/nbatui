@@ -5,6 +5,46 @@
 
 const BASE_URL = process.env.DATA_SERVICE_URL || 'http://localhost:8765';
 
+export interface ApiClientDiagnostic {
+    operation: string;
+    endpoint: string;
+    message: string;
+    status?: number;
+    at: string;
+}
+
+const diagnosticQueue: ApiClientDiagnostic[] = [];
+const MAX_DIAGNOSTICS = 50;
+
+function recordDiagnostic(
+    operation: string,
+    endpoint: string,
+    message: string,
+    status?: number
+): void {
+    diagnosticQueue.push({
+        operation,
+        endpoint,
+        message,
+        status,
+        at: new Date().toISOString()
+    });
+
+    if (diagnosticQueue.length > MAX_DIAGNOSTICS) {
+        diagnosticQueue.splice(0, diagnosticQueue.length - MAX_DIAGNOSTICS);
+    }
+}
+
+function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return String(error || 'Unknown error');
+}
+
+export function consumeApiDiagnostics(): ApiClientDiagnostic[] {
+    if (diagnosticQueue.length === 0) return [];
+    return diagnosticQueue.splice(0, diagnosticQueue.length);
+}
+
 export interface Team {
     teamId: number;
     teamName: string;
@@ -38,13 +78,22 @@ export interface HealthResponse {
  * Check if data service is available
  */
 export async function checkHealth(): Promise<boolean> {
+    const endpoint = '/health';
     try {
-        const res = await fetch(`${BASE_URL}/health`, {
+        const res = await fetch(`${BASE_URL}${endpoint}`, {
             signal: AbortSignal.timeout(3000)
         });
+        if (!res.ok) {
+            recordDiagnostic('checkHealth', endpoint, `HTTP ${res.status}`, res.status);
+            return false;
+        }
         const data = (await res.json()) as HealthResponse;
+        if (data.status !== 'ok') {
+            recordDiagnostic('checkHealth', endpoint, `Unexpected status: ${data.status}`);
+        }
         return data.status === 'ok';
-    } catch {
+    } catch (error) {
+        recordDiagnostic('checkHealth', endpoint, getErrorMessage(error));
         return false;
     }
 }
@@ -53,13 +102,17 @@ export async function checkHealth(): Promise<boolean> {
  * Fetch today's games
  */
 export async function fetchTodayGames(): Promise<Game[]> {
+    const endpoint = '/games/today';
     try {
-        const res = await fetch(`${BASE_URL}/games/today`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchTodayGames', endpoint, `HTTP ${res.status}`, res.status);
+            return [];
+        }
         const data = (await res.json()) as GamesResponse;
         return data.games;
-    } catch {
-        // Silently fail - don't log to terminal (causes flicker)
+    } catch (error) {
+        recordDiagnostic('fetchTodayGames', endpoint, getErrorMessage(error));
         return [];
     }
 }
@@ -68,13 +121,17 @@ export async function fetchTodayGames(): Promise<Game[]> {
  * Fetch games for a specific date (YYYY-MM-DD)
  */
 export async function fetchGamesByDate(date: string): Promise<Game[]> {
+    const endpoint = `/games/date/${date}`;
     try {
-        const res = await fetch(`${BASE_URL}/games/date/${date}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchGamesByDate', endpoint, `HTTP ${res.status}`, res.status);
+            return [];
+        }
         const data = (await res.json()) as GamesResponse;
         return data.games;
-    } catch {
-        // Silently fail
+    } catch (error) {
+        recordDiagnostic('fetchGamesByDate', endpoint, getErrorMessage(error));
         return [];
     }
 }
@@ -83,13 +140,17 @@ export async function fetchGamesByDate(date: string): Promise<Game[]> {
  * Fetch live games only
  */
 export async function fetchLiveGames(): Promise<Game[]> {
+    const endpoint = '/games/live';
     try {
-        const res = await fetch(`${BASE_URL}/games/live`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchLiveGames', endpoint, `HTTP ${res.status}`, res.status);
+            return [];
+        }
         const data = (await res.json()) as GamesResponse;
         return data.games;
-    } catch {
-        // Silently fail
+    } catch (error) {
+        recordDiagnostic('fetchLiveGames', endpoint, getErrorMessage(error));
         return [];
     }
 }
@@ -236,11 +297,16 @@ export function getGameStatusInfo(game: Game): { text: string; isLive: boolean; 
 }
 
 export async function fetchBoxScore(gameId: string): Promise<any> {
+    const endpoint = `/games/${gameId}/boxscore`;
     try {
-        const res = await fetch(`${BASE_URL}/games/${gameId}/boxscore`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchBoxScore', endpoint, `HTTP ${res.status}`, res.status);
+            return null;
+        }
         return await res.json();
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchBoxScore', endpoint, getErrorMessage(error));
         return null;
     }
 }
@@ -264,6 +330,7 @@ export interface PlayByPlayResponse {
 }
 
 export async function fetchPlayByPlay(gameId: string, gameStatus?: number): Promise<PlayByPlayResponse | null> {
+    const endpoint = `/games/${gameId}/playbyplay${gameStatus !== undefined ? `?status=${gameStatus}` : ''}`;
     try {
         let url = `${BASE_URL}/games/${gameId}/playbyplay`;
         // Pass status to backend for caching completed games
@@ -271,9 +338,13 @@ export async function fetchPlayByPlay(gameId: string, gameStatus?: number): Prom
             url += `?status=${gameStatus}`;
         }
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchPlayByPlay', endpoint, `HTTP ${res.status}`, res.status);
+            return null;
+        }
         return (await res.json()) as PlayByPlayResponse;
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchPlayByPlay', endpoint, getErrorMessage(error));
         return null;
     }
 }
@@ -292,11 +363,16 @@ export interface ScoreCurveData {
 }
 
 export async function fetchScoreCurve(gameId: string): Promise<ScoreCurveData | null> {
+    const endpoint = `/games/${gameId}/score-curve`;
     try {
-        const res = await fetch(`${BASE_URL}/games/${gameId}/score-curve`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchScoreCurve', endpoint, `HTTP ${res.status}`, res.status);
+            return null;
+        }
         return (await res.json()) as ScoreCurveData;
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchScoreCurve', endpoint, getErrorMessage(error));
         return null;
     }
 }
@@ -306,11 +382,16 @@ export async function fetchScoreCurve(gameId: string): Promise<ScoreCurveData | 
 
 
 export async function fetchStandings(): Promise<any> {
+    const endpoint = '/games/standings';
     try {
-        const res = await fetch(`${BASE_URL}/games/standings`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchStandings', endpoint, `HTTP ${res.status}`, res.status);
+            return null;
+        }
         return await res.json();
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchStandings', endpoint, getErrorMessage(error));
         return null;
     }
 }
@@ -338,12 +419,17 @@ export interface OddsResponse {
  * Fetch Polymarket odds for all upcoming games
  */
 export async function fetchPolymarketOdds(): Promise<Record<string, GameOdds>> {
+    const endpoint = '/api/polymarket/odds';
     try {
-        const res = await fetch(`${BASE_URL}/api/polymarket/odds`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchPolymarketOdds', endpoint, `HTTP ${res.status}`, res.status);
+            return {};
+        }
         const data = (await res.json()) as OddsResponse;
         return data.odds;
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchPolymarketOdds', endpoint, getErrorMessage(error));
         return {};
     }
 }
@@ -369,12 +455,17 @@ export interface HistoryResponse {
  * Fetch historical prices for a CLOB token
  */
 export async function fetchTokenHistory(clobId: string): Promise<PricePoint[]> {
+    const endpoint = `/api/polymarket/history/${clobId}`;
     try {
-        const res = await fetch(`${BASE_URL}/api/polymarket/history/${clobId}`);
-        if (!res.ok) return [];
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchTokenHistory', endpoint, `HTTP ${res.status}`, res.status);
+            return [];
+        }
         const data = (await res.json()) as HistoryResponse;
         return data.history;
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchTokenHistory', endpoint, getErrorMessage(error));
         return [];
     }
 }
@@ -389,12 +480,17 @@ export interface PropsResponse {
 }
 
 export async function fetchPolymarketProps(): Promise<Record<string, Candidate[]>> {
+    const endpoint = '/api/polymarket/props';
     try {
-        const res = await fetch(`${BASE_URL}/api/polymarket/props`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchPolymarketProps', endpoint, `HTTP ${res.status}`, res.status);
+            return {};
+        }
         const data = (await res.json()) as PropsResponse;
         return data.props;
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchPolymarketProps', endpoint, getErrorMessage(error));
         return {};
     }
 }
@@ -419,8 +515,9 @@ export interface TweetsResponse {
 
 
 export async function fetchGameHeat(team1: string, team2: string, status?: number, date?: string, gameId?: string): Promise<SocialHeat | null> {
+    const endpointBase = `/social/heat/${team1}/${team2}`;
     try {
-        let url = `${BASE_URL}/social/heat/${team1}/${team2}`;
+        let url = `${BASE_URL}${endpointBase}`;
         const params = new URLSearchParams();
         if (status) params.append('status', status.toString());
         if (date) params.append('date', date);
@@ -429,9 +526,21 @@ export async function fetchGameHeat(team1: string, team2: string, status?: numbe
         if (params.size > 0) url += `?${params.toString()}`;
 
         const res = await fetch(url);
-        if (!res.ok) return null;
+        if (!res.ok) {
+            const endpoint = params.size > 0 ? `${endpointBase}?${params.toString()}` : endpointBase;
+            recordDiagnostic('fetchGameHeat', endpoint, `HTTP ${res.status}`, res.status);
+            return null;
+        }
         return (await res.json()) as SocialHeat;
-    } catch {
+    } catch (error) {
+        const endpoint = status || date || gameId
+            ? `${endpointBase}?${new URLSearchParams({
+                ...(status ? { status: status.toString() } : {}),
+                ...(date ? { date } : {}),
+                ...(gameId ? { game_id: gameId } : {}),
+            }).toString()}`
+            : endpointBase;
+        recordDiagnostic('fetchGameHeat', endpoint, getErrorMessage(error));
         return null;
     }
 }
@@ -440,8 +549,9 @@ export async function fetchGameHeat(team1: string, team2: string, status?: numbe
  * Fetch top tweets/comments for a game
  */
 export async function fetchGameTweets(team1: string, team2: string, status?: number, date?: string, gameId?: string): Promise<Tweet[]> {
+    const endpointBase = `/social/tweets/${team1}/${team2}`;
     try {
-        let url = `${BASE_URL}/social/tweets/${team1}/${team2}`;
+        let url = `${BASE_URL}${endpointBase}`;
         const params = new URLSearchParams();
         if (status) params.append('status', status.toString());
         if (date) params.append('date', date);
@@ -450,10 +560,22 @@ export async function fetchGameTweets(team1: string, team2: string, status?: num
         if (params.size > 0) url += `?${params.toString()}`;
 
         const res = await fetch(url);
-        if (!res.ok) return [];
+        if (!res.ok) {
+            const endpoint = params.size > 0 ? `${endpointBase}?${params.toString()}` : endpointBase;
+            recordDiagnostic('fetchGameTweets', endpoint, `HTTP ${res.status}`, res.status);
+            return [];
+        }
         const data = (await res.json()) as TweetsResponse;
         return data.tweets;
-    } catch {
+    } catch (error) {
+        const endpoint = status || date || gameId
+            ? `${endpointBase}?${new URLSearchParams({
+                ...(status ? { status: status.toString() } : {}),
+                ...(date ? { date } : {}),
+                ...(gameId ? { game_id: gameId } : {}),
+            }).toString()}`
+            : endpointBase;
+        recordDiagnostic('fetchGameTweets', endpoint, getErrorMessage(error));
         return [];
     }
 }
@@ -599,11 +721,16 @@ export interface TeamInfo {
  * Fetch team roster with player stats
  */
 export async function fetchTeamRoster(teamId: number): Promise<TeamRoster | null> {
+    const endpoint = `/games/team/${teamId}/roster`;
     try {
-        const res = await fetch(`${BASE_URL}/games/team/${teamId}/roster`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchTeamRoster', endpoint, `HTTP ${res.status}`, res.status);
+            return null;
+        }
         return (await res.json()) as TeamRoster;
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchTeamRoster', endpoint, getErrorMessage(error));
         return null;
     }
 }
@@ -612,11 +739,16 @@ export async function fetchTeamRoster(teamId: number): Promise<TeamRoster | null
  * Fetch team's recent game log
  */
 export async function fetchTeamGamelog(teamId: number, lastN: number = 10): Promise<TeamGamelog | null> {
+    const endpoint = `/games/team/${teamId}/gamelog?last_n=${lastN}`;
     try {
-        const res = await fetch(`${BASE_URL}/games/team/${teamId}/gamelog?last_n=${lastN}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchTeamGamelog', endpoint, `HTTP ${res.status}`, res.status);
+            return null;
+        }
         return (await res.json()) as TeamGamelog;
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchTeamGamelog', endpoint, getErrorMessage(error));
         return null;
     }
 }
@@ -625,11 +757,16 @@ export async function fetchTeamGamelog(teamId: number, lastN: number = 10): Prom
  * Fetch team details and season info
  */
 export async function fetchTeamInfo(teamId: number): Promise<TeamInfo | null> {
+    const endpoint = `/games/team/${teamId}/info`;
     try {
-        const res = await fetch(`${BASE_URL}/games/team/${teamId}/info`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${BASE_URL}${endpoint}`);
+        if (!res.ok) {
+            recordDiagnostic('fetchTeamInfo', endpoint, `HTTP ${res.status}`, res.status);
+            return null;
+        }
         return (await res.json()) as TeamInfo;
-    } catch {
+    } catch (error) {
+        recordDiagnostic('fetchTeamInfo', endpoint, getErrorMessage(error));
         return null;
     }
 }
