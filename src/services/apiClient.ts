@@ -100,6 +100,32 @@ export async function fetchLiveGames(): Promise<Game[]> {
  * @param gameDate - Date string in YYYY-MM-DD format
  * @returns Formatted local time string (e.g., "7:00 am") or empty string if parsing fails
  */
+function getNthSundayOfMonth(year: number, month: number, nth: number): number {
+    const firstDay = new Date(Date.UTC(year, month - 1, 1)).getUTCDay(); // 0 = Sunday
+    const firstSunday = firstDay === 0 ? 1 : 8 - firstDay;
+    return firstSunday + (nth - 1) * 7;
+}
+
+function isEasternDaylightTime(year: number, month: number, day: number, hour24: number): boolean {
+    // US Eastern DST:
+    // starts: second Sunday in March at 2:00 AM local time
+    // ends:   first Sunday in November at 2:00 AM local time
+    if (month < 3 || month > 11) return false;
+    if (month > 3 && month < 11) return true;
+
+    if (month === 3) {
+        const secondSunday = getNthSundayOfMonth(year, 3, 2);
+        if (day > secondSunday) return true;
+        if (day < secondSunday) return false;
+        return hour24 >= 2;
+    }
+
+    const firstSunday = getNthSundayOfMonth(year, 11, 1);
+    if (day < firstSunday) return true;
+    if (day > firstSunday) return false;
+    return hour24 < 2;
+}
+
 export function parseETTimeToLocal(statusText: string, gameDate: string): string {
     if (!statusText || !gameDate) return '';
 
@@ -116,14 +142,19 @@ export function parseETTimeToLocal(statusText: string, gameDate: string): string
         if (isPM && hours !== 12) hours += 12;
         if (!isPM && hours === 12) hours = 0;
 
-        // Create date in ET (Eastern Time)
-        // ET is UTC-5 (EST) or UTC-4 (EDT)
-        // For simplicity, we'll use America/New_York timezone
-        const dateStr = `${gameDate}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+        const [yearStr, monthStr, dayStr] = gameDate.split('-');
+        const year = parseInt(yearStr || '', 10);
+        const month = parseInt(monthStr || '', 10);
+        const day = parseInt(dayStr || '', 10);
+        if (!year || !month || !day) return '';
 
-        // Parse as ET and convert to local
-        // Create a date assuming ET timezone
-        const etDate = new Date(dateStr + '-05:00'); // Use EST (UTC-5) as base
+        // Resolve ET offset from DST rules for this local ET date/time.
+        const isDst = isEasternDaylightTime(year, month, day, hours);
+        const etOffsetHours = isDst ? -4 : -5;
+
+        // Convert local ET clock time to UTC, then render in user's local timezone.
+        const utcMs = Date.UTC(year, month - 1, day, hours - etOffsetHours, minutes, 0);
+        const etDate = new Date(utcMs);
 
         // Check if date is valid
         if (isNaN(etDate.getTime())) return '';
