@@ -76,9 +76,12 @@ git clone https://github.com/yourusername/nba-tui.git
 cd nba-tui
 
 # 运行安装脚本 | Run setup script
-chmod +x setup.sh
 ./setup.sh
 ```
+
+可选参数 | Optional flags:
+- `./setup.sh --force`：强制重装 Python/Bun 依赖
+- `./setup.sh --auto-install-bun`：检测到 Bun 缺失时自动安装（适合 CI/非交互环境）
 
 ---
 
@@ -86,7 +89,7 @@ chmod +x setup.sh
 
 ```bash
 # 启动应用 | Start app
-./start.sh
+./nbatui
 ```
 
 ---
