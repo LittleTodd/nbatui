@@ -200,7 +200,7 @@ class NBAService:
             if needs_fallback:
                 try:
                     # Calculate season
-                    y, m, d = map(int, date_str.split('-'))
+                    y, m, d = map(int, nba_date_prev.split('-'))
                     season_start_year = y if m >= 10 else y - 1
                     season_str = f"{season_start_year}-{str(season_start_year + 1)[-2:]}"
                     
