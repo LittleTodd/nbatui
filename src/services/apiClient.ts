@@ -60,6 +60,10 @@ export interface Game {
     period: number;
     gameClock: string;
     gameTimeUTC: string;
+    /** NBA/Eastern calendar date for this game (YYYY-MM-DD). */
+    gameDateET?: string;
+    /** User's local calendar date for this game (YYYY-MM-DD). */
+    localDate?: string;
     homeTeam: Team;
     awayTeam: Team;
 }
@@ -262,6 +266,31 @@ export function formatGameTimeLocal(gameTimeUTC: string): string {
 }
 
 /**
+ * Convert a UTC timestamp to the NBA/Eastern calendar date (YYYY-MM-DD).
+ * This is the date the NBA itself uses for game threads and stats endpoints.
+ */
+export function getETDate(utc: string): string {
+    if (!utc) return '';
+
+    const date = new Date(utc);
+    if (isNaN(date.getTime())) return utc.slice(0, 10);
+
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(date);
+
+    const value = (type: string) => parts.find(part => part.type === type)?.value || '';
+    const year = value('year');
+    const month = value('month');
+    const day = value('day');
+
+    return year && month && day ? `${year}-${month}-${day}` : utc.slice(0, 10);
+}
+
+/**
  * Get game status display info
  */
 export function getGameStatusInfo(game: Game): { text: string; isLive: boolean; isFinal: boolean } {
@@ -279,8 +308,10 @@ export function getGameStatusInfo(game: Game): { text: string; isLive: boolean; 
             if (localTime) {
                 text = localTime;
             } else {
-                // gameTimeUTC is just a date, parse time from gameStatusText
-                const gameDate = game.gameTimeUTC.slice(0, 10);
+                // gameTimeUTC is just a date, parse time from gameStatusText.
+                // The status text is always an ET clock time, so the reference
+                // date must be the ET calendar date, not the user's local date.
+                const gameDate = game.gameDateET || getETDate(game.gameTimeUTC) || game.localDate || '';
                 const parsedTime = parseETTimeToLocal(game.gameStatusText, gameDate);
                 if (parsedTime) {
                     text = parsedTime;
@@ -439,6 +470,56 @@ export async function fetchPolymarketOdds(): Promise<Record<string, GameOdds>> {
  */
 export function getOddsKey(awayTricode: string, homeTricode: string, date: string): string {
     return `${awayTricode}_${homeTricode}_${date}`;
+}
+
+function shiftDate(date: string, days: number): string {
+    const [yearStr, monthStr, dayStr] = date.split('-');
+    const year = parseInt(yearStr || '', 10);
+    const month = parseInt(monthStr || '', 10);
+    const day = parseInt(dayStr || '', 10);
+    if (!year || !month || !day) return '';
+
+    const shifted = new Date(Date.UTC(year, month - 1, day));
+    shifted.setUTCDate(shifted.getUTCDate() + days);
+    return shifted.toISOString().slice(0, 10);
+}
+
+/**
+ * Find the odds for a game, tolerating the date offset between Polymarket's
+ * UTC end date and the user's local game date.
+ *
+ * The previous implementation only checked the next day, which misses Asian
+ * and European timezones where the local game date is ahead of the ET date.
+ */
+export function findGameOdds(
+    odds: Record<string, GameOdds> | null | undefined,
+    awayTricode: string,
+    homeTricode: string,
+    date?: string
+): GameOdds | undefined {
+    if (!odds) return undefined;
+
+    const lookup = (candidate?: string): GameOdds | undefined => {
+        if (!candidate) return undefined;
+        return odds[getOddsKey(awayTricode, homeTricode, candidate)];
+    };
+
+    const exact = lookup(date);
+    if (exact) return exact;
+
+    if (date) {
+        const previous = lookup(shiftDate(date, -1));
+        if (previous) return previous;
+
+        const next = lookup(shiftDate(date, 1));
+        if (next) return next;
+    }
+
+    // Last resort: the same matchup, but only if there is exactly one match.
+    const matches = Object.values(odds).filter(
+        item => item.awayTeam === awayTricode && item.homeTeam === homeTricode
+    );
+    return matches.length === 1 ? matches[0] : undefined;
 }
 
 export interface PricePoint {

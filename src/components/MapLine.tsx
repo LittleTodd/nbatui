@@ -4,7 +4,7 @@ import type { Game, GameOdds } from '../services/apiClient.js';
 import type { HeatData } from '../hooks/useSocialHeat.js';
 import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { createGameMarker, type GameColor } from '../utils/mapRendering.js';
-import { getOddsKey as fetchOddsKey } from '../services/apiClient.js';
+import { findGameOdds } from '../services/apiClient.js';
 import { US_MAP_WIDTH, US_MAP_HEIGHT } from '../data/usMap.js';
 import { getTerrainRegion, getTerrainColor, getTerrainChar } from '../data/mapTerrain.js';
 
@@ -25,15 +25,8 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
         if (pos.row === rowIndex) {
             const game = games[gameIdx];
             if (!game) return;
-            const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
-            let gameOdds = odds[fetchOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate)];
-
-            if (!gameOdds && gameDate) {
-                const nextDay = new Date(gameDate);
-                nextDay.setDate(nextDay.getDate() + 1);
-                const nextDayStr = nextDay.toISOString().slice(0, 10);
-                gameOdds = odds[fetchOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
-            }
+            const gameDate = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10) || '';
+            const gameOdds = findGameOdds(odds, game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
 
             const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds, pos.heat, pos.isCrunchTime);
             markersOnRow.push({

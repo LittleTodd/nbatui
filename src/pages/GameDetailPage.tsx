@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, getOddsKey, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet, fetchPlayByPlay, type PlayByPlayAction } from '../services/apiClient.js';
+import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, findGameOdds, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet, fetchPlayByPlay, type PlayByPlayAction } from '../services/apiClient.js';
 import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { HeatIndicator } from '../components/HeatIndicator.js';
 import { PlayByPlayStream } from '../components/PlayByPlayStream.js';
@@ -71,7 +71,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
             // Fetch Social Data (Parallel)
             const team1 = game.awayTeam.teamName;
             const team2 = game.homeTeam.teamName;
-            const gameDateStr = game.gameTimeUTC?.slice(0, 10);
+            const gameDateStr = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10);
 
             let skipSocial = false;
             if (gameDateStr) {
@@ -107,14 +107,8 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 const standingsArray = standingsData?.standings || [];
                 setStandings(Array.isArray(standingsArray) ? standingsArray : []);
 
-                const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
-                let gameOdds = oddsData[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate)];
-                if (!gameOdds && gameDate) {
-                    const nextDay = new Date(gameDate);
-                    nextDay.setDate(nextDay.getDate() + 1);
-                    const nextDayStr = nextDay.toISOString().slice(0, 10);
-                    gameOdds = oddsData[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
-                }
+                const gameDate = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10) || '';
+                const gameOdds = findGameOdds(oddsData, game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
                 setOdds(gameOdds || null);
 
                 // For scheduled games, we are done after this.
@@ -362,7 +356,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                         {tweets.length > 0 ? (
                             tweets.slice(0, 3).map((t, i) => (
                                 <Box key={i} flexDirection="column" marginBottom={1}>
-                                    <Text dimColor>@{t.user} <Text color="green">^ {t.likes}</Text></Text>
+                                    <Text dimColor>{t.user.startsWith('u/') ? t.user : `u/${t.user}`} <Text color="green">^ {t.likes}</Text></Text>
                                     <Text italic color="white">"{t.text}"</Text>
                                 </Box>
                             ))

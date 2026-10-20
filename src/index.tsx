@@ -6,7 +6,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
 import BasketballSpinner from './components/BasketballSpinner.js';
 import { format, isSameDay } from 'date-fns';
-import { getOddsKey } from './services/apiClient.js';
+import { findGameOdds } from './services/apiClient.js';
 import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
 import { getTeamPosition } from './data/teamCoords.js';
 import { GameDetailPage } from './pages/GameDetailPage.js';
@@ -304,14 +304,8 @@ function App() {
                     ) : (
                         games.length > 0 && games[selectedIndex] && (() => {
                             const game = games[selectedIndex];
-                            const gameDate = game.gameTimeUTC?.slice(0, 10) || '';
-                            let gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate)];
-                            if (!gameOdds && gameDate) {
-                                const nextDay = new Date(gameDate);
-                                nextDay.setDate(nextDay.getDate() + 1);
-                                const nextDayStr = nextDay.toISOString().slice(0, 10);
-                                gameOdds = odds[getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, nextDayStr)];
-                            }
+                            const gameDate = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10) || '';
+                            const gameOdds = findGameOdds(odds, game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
                             // Pass heat to detail
                             const gameHeat = socialHeat[game.gameId];
                             return <GameDetail game={game} odds={gameOdds} currentIndex={selectedIndex} totalGames={games.length} heat={gameHeat} />;

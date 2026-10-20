@@ -89,12 +89,10 @@ def get_game_heat(
     # Note: Frontend should usually block this, but safety check here
     if date:
         try:
-            # Use timezone_utils to handle local dates correctly
-            from services.timezone_utils import convert_utc_to_local_date, get_local_today
             game_date = datetime.strptime(date, "%Y-%m-%d")
             if datetime.now() - game_date > timedelta(days=180):
                  return {"count": 0, "level": "cold", "trending": False, "message": "Archived"}
-        except:
+        except (ValueError, TypeError):
             pass
 
     # 4. Search Reddit
@@ -206,11 +204,10 @@ def get_game_tweets(
     # 3. Old Game Check
     if date:
         try:
-            from services.timezone_utils import convert_utc_to_local_date
             game_date = datetime.strptime(date, "%Y-%m-%d")
             if datetime.now() - game_date > timedelta(days=180):
                  return {"tweets": []}
-        except:
+        except (ValueError, TypeError):
             pass
 
     # 4. Fetch

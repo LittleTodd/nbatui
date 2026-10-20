@@ -6,7 +6,7 @@ from typing import Any
 from nba_api.live.nba.endpoints import scoreboard, boxscore, playbyplay
 from nba_api.stats.static import teams
 from nba_api.stats.endpoints import leaguestandings, commonteamroster, teamgamelog, teaminfocommon, teamdetails, teamplayerdashboard
-from . import cache_service
+from . import cache_service, schedule_service
 
 
 class NBAService:
@@ -28,258 +28,285 @@ class NBAService:
 
     def get_games_by_date(self, date_str: str) -> list[dict[str, Any]]:
         """
-        Get games for a specific date (YYYY-MM-DD in user's local timezone).
-        - Uses games_cache for completed dates
-        - Uses schedule_cache for future dates (24h TTL)
-        - Filters games by their localDate to match requested date
-        """
-        from datetime import datetime, timedelta
-        from .timezone_utils import utc_to_local_date, get_local_today
-        
-        def ensure_local_date(games: list) -> list:
-            """Add localDate field to games based on gameTimeUTC"""
-            for game in games:
-                if not game.get('localDate'):
-                    game_time = game.get('gameTimeUTC', '')
-                    if game_time:
-                        game['localDate'] = utc_to_local_date(game_time)
-                    else:
-                        game['localDate'] = date_str
-            return games
-        
-        def filter_by_local_date(games: list, target_date: str) -> list:
-            """Filter games to only include those matching the target local date"""
-            return [g for g in games if g.get('localDate') == target_date]
-        
-        # Calculate the NBA calendar date that corresponds to user's local date
-        # For timezones ahead of ET (e.g., UTC+8), local date X = NBA date X-1
-        # This is because NBA games at 7pm ET on Jan 5 are Jan 6 8am in Beijing
-        from datetime import datetime
-        is_today = date_str == get_local_today()
-        requested_dt = datetime.strptime(date_str, '%Y-%m-%d')
-        nba_date = (requested_dt - timedelta(days=1)).strftime('%Y-%m-%d')
-        
-        # Check games_cache using NBA date (not user's local date)
-        # For TODAY, skip cache to use Live API for real-time updates
-        cached = cache_service.get_cached_games(nba_date)
-        if cached is not None and not is_today:
-            # Update localDate to user's requested date and return
-            for g in cached:
-                g['localDate'] = date_str
-            return cached
-        
-        # Check schedule_cache for future dates using NBA date
-        schedule_cached = cache_service.get_cached_schedule(nba_date)
-        if schedule_cached is not None:
-            # Update localDate to user's requested date
-            for g in schedule_cached:
-                g['localDate'] = date_str
-            
-            # If it's today, skip cache to get live updates
-            if not is_today:
-                return schedule_cached
+        Get games for a specific local date (YYYY-MM-DD in the user's timezone).
 
-        # For today's date, use Live API first as it has the most current game statuses
-        # Live API returns NBA's calendar games, but we use gameTimeUTC to determine
-        # which LOCAL date the games belong to
+        Resolution order:
+        1. Completed-date cache (keyed by local date).
+        2. Live API for today (real-time scores and true UTC tip-off times).
+        3. Official season schedule -> exact NBA/ET dates for this local date.
+        4. Timezone heuristic fallback if the schedule is unavailable.
+
+        The schedule index is authoritative because it knows every game's UTC
+        tip-off time. That removes the previous hardcoded "local date - 1"
+        assumption, which was correct in Asia but wrong in the US.
+        """
+        from datetime import datetime, timezone
+        from .timezone_utils import (
+            get_local_today,
+            nba_date_candidates,
+            utc_to_et_date,
+            utc_to_local_date,
+        )
+
+        def normalize_cached(games: list[dict[str, Any]], target_date: str) -> list[dict[str, Any]]:
+            """Ensure cached games always carry the display date."""
+            for game in games:
+                game["localDate"] = target_date
+            return games
+
         is_today = date_str == get_local_today()
+
+        # 1. Cache completed/past dates by LOCAL date. Keys changed semantics
+        #    (ET date -> local date), so cache_service clears old rows.
+        if not is_today:
+            cached = cache_service.get_cached_games(date_str)
+            if cached is not None:
+                return normalize_cached(cached, date_str)
+
+        # 2. Today: the Live API has the freshest scores and true UTC times.
         if is_today:
             try:
                 live_games, nba_game_date = self._fetch_today_games_via_live_api_with_date(date_str)
                 if live_games:
-                    # Add localDate based on actual gameTimeUTC (not NBA date)
-                    live_games = ensure_local_date(live_games)
-                    # Filter to only games that match the requested local date
-                    filtered_games = filter_by_local_date(live_games, date_str)
+                    for game in live_games:
+                        game_time = game.get("gameTimeUTC", "")
+                        game["localDate"] = utc_to_local_date(game_time) if game_time else date_str
+                        game["gameDateET"] = utc_to_et_date(game_time) if game_time else nba_game_date
+
+                    filtered_games = [g for g in live_games if g.get("localDate") == date_str]
                     if filtered_games:
-                        print(f"DEBUG: Live API (NBA date: {nba_game_date}) has {len(filtered_games)} games for local date {date_str}")
+                        print(
+                            f"DEBUG: Live API (NBA date: {nba_game_date}) has "
+                            f"{len(filtered_games)} games for local date {date_str}"
+                        )
                         return filtered_games
-                    # If no games match user's local date, fall through to try previous NBA day
-                    print(f"DEBUG: Live API (NBA date: {nba_game_date}) has no games for local date {date_str}")
+                    print(
+                        f"DEBUG: Live API (NBA date: {nba_game_date}) has no games "
+                        f"for local date {date_str}"
+                    )
             except Exception as e:
                 print(f"DEBUG: Live API failed for today: {e}, falling back to Stats API")
 
-        # For non-today dates or when Live API fails:
-        # User's local date X corresponds to NBA calendar date X-1 for timezones ahead of ET
-        # Example: User requests 2026-01-06 (Beijing time) -> need NBA's 2026-01-05 games
-        # because NBA Jan 5 games start at 7pm ET (Jan 6 8am Beijing)
-        
-        # Calculate the previous day (NBA calendar day that likely corresponds to requested local date)
-        requested_date = datetime.strptime(date_str, '%Y-%m-%d')
-        nba_date_prev = (requested_date - timedelta(days=1)).strftime('%Y-%m-%d')
-        
-        try:
-            # Use scoreboardv2 for the PREVIOUS NBA calendar day
-            from nba_api.stats.endpoints import scoreboardv2
-            board = scoreboardv2.ScoreboardV2(game_date=nba_date_prev)
-            data = board.get_dict()
-            
-            # scoreboardv2 structure: resultSets[0] = GameHeader, resultSets[1] = LineScore
-            if 'resultSets' not in data or len(data['resultSets']) < 2:
+        # 3. Official schedule: exact local-date -> game mapping.
+        schedule = schedule_service.get_index_for_date(date_str)
+        schedule_game_ids: set[str] | None = None
+
+        if schedule is not None and schedule.covers(date_str):
+            schedule_game_ids = schedule.game_ids_for_local_date(date_str)
+            if not schedule_game_ids:
+                # Off-day (or a game whose time is not announced yet). Cache the
+                # empty result so we do not re-query the stats API every time.
+                cache_service.cache_schedule(date_str, [])
                 return []
+            et_dates = schedule.et_dates_for_local_date(date_str)
+        else:
+            # Fallback: query the likely ET dates and filter by tip-off time
+            # when the stats endpoint gives us one.
+            et_dates = nba_date_candidates(date_str)
 
-            headers = data['resultSets'][0]['headers']
-            rows = data['resultSets'][0]['rowSet']
-            
-            # Map headers to indices
-            h_map = {h: i for i, h in enumerate(headers)}
-            
-            games_map = {} # Use dict to deduplicate by ID
-            for row in rows:
-                game_id = row[h_map['GAME_ID']]
-                if game_id in games_map:
-                    continue
-                    
-                home_id = row[h_map['HOME_TEAM_ID']]
-                away_id = row[h_map['VISITOR_TEAM_ID']] # VISITOR, not AWAY in v2
-                
-                # We need to map IDs to Teams manually since V2 doesn't give full objects like live endpoint
-                # Or we can fetch LineScore (set 1) which has scores
-                # Let's simplify and just get IDs and use basic info if possible
-                # But we need scores.
-                
-                # Fetch LineScore for scores
-                line_score_headers = data['resultSets'][1]['headers']
-                line_score_rows = data['resultSets'][1]['rowSet']
-                ls_map = {h: i for i, h in enumerate(line_score_headers)}
-                
-                home_score = 0
-                away_score = 0
-                
-                # Find score rows for this game
-                for ls_row in line_score_rows:
-                    if ls_row[ls_map['GAME_ID']] == game_id:
-                        team_id = ls_row[ls_map['TEAM_ID']]
-                        pts = ls_row[ls_map['PTS']]
-                        if pts is None: pts = 0
-                        if team_id == home_id:
-                            home_score = pts
-                        elif team_id == away_id:
-                            away_score = pts
+        # 4. Fetch the stats scoreboard for each relevant ET date.
+        games_by_id: dict[str, dict[str, Any]] = {}
+        for et_date in et_dates:
+            try:
+                for game in self._fetch_stats_games(et_date):
+                    games_by_id[game["gameId"]] = game
+            except Exception as e:
+                print(
+                    f"[NBA API] Failed for ET date {et_date} (local {date_str}): {e}",
+                    flush=True,
+                )
 
-                # Get Team Info from cache
-                home_team = self._get_team_info(home_id)
-                away_team = self._get_team_info(away_id)
-                
-                game_status_id = row[h_map['GAME_STATUS_ID']] # 1=Scheduled, 2=In Progress, 3=Final
-                status_text = row[h_map['GAME_STATUS_TEXT']] 
-                
-                # NOTE: GAME_DATE_EST is the NBA's Eastern timezone date, NOT a UTC timestamp.
-                # Since we query scoreboardv2 with date_str (the user's requested local date),
-                # we use date_str directly as localDate. This works because:
-                # - When user requests their local date X, they expect NBA games from that date
-                # - scoreboardv2 returns games based on the NBA calendar date
-                game_date_et = row[h_map['GAME_DATE_EST']]
-                # Use the requested date as localDate for scoreboardv2 data
-                local_date = date_str
-                
-                games_map[game_id] = {
-                    "gameId": game_id,
-                    "gameStatus": int(game_status_id),
-                    "gameStatusText": status_text,
-                    "period": 0,
-                    "gameClock": "",
-                    "gameTimeUTC": game_date_et,  # Not actual UTC, but keep for compatibility
-                    "localDate": local_date,  # User's requested date
-                    "homeTeam": {
-                        **home_team,
-                        "score": home_score
-                    },
-                    "awayTeam": {
-                        **away_team,
-                        "score": away_score
-                    }
-                }
-            
-            # Check if we need fallback (if games exist but no scores/status is 1)
-            # Only check if ALL games are not final? Or check individual?
-            # User case: 2025-12-25 has games but all status 1.
-            # Let's verify if we have any non-Final games
-            needs_fallback = any(g['gameStatus'] == 1 for g in games_map.values())
-            
-            if needs_fallback:
-                try:
-                    # Calculate season
-                    y, m, d = map(int, nba_date_prev.split('-'))
-                    season_start_year = y if m >= 10 else y - 1
-                    season_str = f"{season_start_year}-{str(season_start_year + 1)[-2:]}"
-                    
-                    # Log date format MM/DD/YYYY
-                    log_date = f"{m:02d}/{d:02d}/{y}"
-                    
-                    from nba_api.stats.endpoints import leaguegamelog
-                    log = leaguegamelog.LeagueGameLog(season=season_start_year, date_from_nullable=log_date, date_to_nullable=log_date)
-                    l_data = log.get_dict()
-                    
-                    if 'resultSets' in l_data and len(l_data['resultSets']) > 0:
-                        l_rows = l_data['resultSets'][0]['rowSet']
-                        l_headers = l_data['resultSets'][0]['headers']
-                        # Map headers
-                        l_map = {h: i for i, h in enumerate(l_headers)}
-                        
-                        # Build score map: TeamID -> Score via game log
-                        scores_map = {}
-                        for lr in l_rows:
-                            tid = lr[l_map['TEAM_ID']]
-                            pts = lr[l_map['PTS']]
-                            scores_map[tid] = pts
-                            
-                        # Update games
-                        for gid, game in games_map.items():
-                            if game['gameStatus'] == 1:
-                                home_id = game['homeTeam']['teamId']
-                                away_id = game['awayTeam']['teamId']
-                                
-                                if home_id in scores_map and away_id in scores_map:
-                                    game['homeTeam']['score'] = scores_map[home_id]
-                                    game['awayTeam']['score'] = scores_map[away_id]
-                                    game['gameStatus'] = 3 # Mark as Final
-                                    game['gameStatusText'] = "Final"
-                except Exception:
-                    pass  # Silently ignore fallback errors
+        games_list = list(games_by_id.values())
 
-            # Cache the results if all games are completed
-            games_list = list(games_map.values())
-            
-            # HYBRID APPROACH: If any game is LIVE (gameStatus=2) OR it is today, use Live API for real-time scores
-            is_today = date_str == get_local_today()
-            
-            has_live_games = any(g['gameStatus'] == 2 for g in games_list)
-            
-            if has_live_games or is_today:
-                try:
-                    print(f"DEBUG: Attempting to merge live scores. is_today={is_today}")
-                    games_list = self._merge_live_scores(games_list)
-                    print(f"DEBUG: Merge successful. Games count: {len(games_list)}")
-                except Exception as e:
-                    print(f"DEBUG: Merge failed: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    pass  # If Live API fails, keep Stats API data
-            
-            # Determine caching strategy based on game statuses
-            all_completed = all(g['gameStatus'] == 3 for g in games_list)
-            all_scheduled = all(g['gameStatus'] == 1 for g in games_list)
-            
-            if all_completed:
-                # Past date with all games finished - cache with NBA date as key
-                cache_service.cache_games(nba_date_prev, games_list)
-            elif all_scheduled:
-                # Future date - cache schedule with NBA date as key (24h TTL)
-                cache_service.cache_schedule(nba_date_prev, games_list)
-            # Don't cache if mixed statuses (today's games in progress)
-            
-            # Filter to only games matching the requested local date
-            return filter_by_local_date(games_list, date_str)
-        except Exception as e:
-            # API failed - try to use stale schedule cache as fallback
-            print(f"[NBA API] Failed for {date_str}: {e}, trying fallback cache", flush=True)
-            fallback = cache_service.get_cached_schedule_fallback(date_str)
-            if fallback:
-                print(f"[NBA API] Using fallback cache for {date_str}: {len(fallback)} games", flush=True)
-                return ensure_local_date(fallback)
+        # 5. Keep only the games that actually belong to this local date.
+        if schedule_game_ids is not None:
+            games_list = [g for g in games_list if g["gameId"] in schedule_game_ids]
+        else:
+            games_list = [
+                g
+                for g in games_list
+                if (g.get("localDate") or date_str) == date_str
+            ]
+
+        # 6. Enrich with exact tip-off times and both calendar dates.
+        if schedule is not None:
+            for game in games_list:
+                game_id = game.get("gameId", "")
+                tipoff = schedule.tipoff_utc(game_id)
+                if tipoff:
+                    game["gameTimeUTC"] = tipoff
+                game["gameDateET"] = schedule.et_date(game_id) or game.get("gameDateET")
+                game["localDate"] = schedule.local_date(game_id) or date_str
+        else:
+            for game in games_list:
+                game.setdefault("localDate", date_str)
+                if not game.get("gameDateET") and game.get("gameTimeUTC"):
+                    game["gameDateET"] = utc_to_et_date(game["gameTimeUTC"])
+
+        # 7. Merge live scores when today's games are in progress.
+        has_live_games = any(g.get("gameStatus") == 2 for g in games_list)
+        if games_list and (has_live_games or is_today):
+            try:
+                print(f"DEBUG: Attempting to merge live scores. is_today={is_today}")
+                games_list = self._merge_live_scores(games_list)
+                print(f"DEBUG: Merge successful. Games count: {len(games_list)}")
+            except Exception as e:
+                print(f"DEBUG: Merge failed: {e}")
+                import traceback
+
+                traceback.print_exc()
+
+        # 8. Cache by LOCAL date. Empty off-days are cached via cache_schedule.
+        all_completed = bool(games_list) and all(
+            g.get("gameStatus") == 3 for g in games_list
+        )
+        all_scheduled = bool(games_list) and all(
+            g.get("gameStatus") == 1 for g in games_list
+        )
+
+        if all_completed:
+            cache_service.cache_games(date_str, games_list)
+        elif all_scheduled:
+            cache_service.cache_schedule(date_str, games_list)
+
+        return games_list
+
+    def _fetch_stats_games(self, et_date: str) -> list[dict[str, Any]]:
+        """
+        Fetch one NBA/ET calendar day from Stats API ``ScoreboardV2``.
+
+        ``gameTimeUTC`` is left empty here; the caller fills it from the season
+        schedule. This matters because ``GAME_DATE_EST`` is not a UTC timestamp
+        even though the API renders it with a ``T00:00:00`` suffix.
+        """
+        from datetime import datetime, timezone
+
+        from nba_api.stats.endpoints import scoreboardv2
+
+        from .timezone_utils import utc_to_et_date
+
+        board = scoreboardv2.ScoreboardV2(game_date=et_date)
+        data = board.get_dict()
+
+        # scoreboardv2 structure: resultSets[0] = GameHeader, [1] = LineScore
+        if "resultSets" not in data or len(data["resultSets"]) < 2:
             return []
-    
+
+        headers = data["resultSets"][0]["headers"]
+        rows = data["resultSets"][0]["rowSet"]
+        header_map = {name: index for index, name in enumerate(headers)}
+
+        line_score_headers = data["resultSets"][1]["headers"]
+        line_score_rows = data["resultSets"][1]["rowSet"]
+        line_score_map = {
+            name: index for index, name in enumerate(line_score_headers)
+        }
+
+        games: dict[str, dict[str, Any]] = {}
+
+        for row in rows:
+            game_id = row[header_map["GAME_ID"]]
+            if game_id in games:
+                continue
+
+            home_id = row[header_map["HOME_TEAM_ID"]]
+            away_id = row[header_map["VISITOR_TEAM_ID"]]
+
+            home_score = 0
+            away_score = 0
+            for line_row in line_score_rows:
+                if line_row[line_score_map["GAME_ID"]] != game_id:
+                    continue
+                team_id = line_row[line_score_map["TEAM_ID"]]
+                points = line_row[line_score_map["PTS"]]
+                if points is None:
+                    points = 0
+                if team_id == home_id:
+                    home_score = points
+                elif team_id == away_id:
+                    away_score = points
+
+            home_team = self._get_team_info(home_id)
+            away_team = self._get_team_info(away_id)
+
+            games[game_id] = {
+                "gameId": game_id,
+                "gameStatus": int(row[header_map["GAME_STATUS_ID"]]),
+                "gameStatusText": row[header_map["GAME_STATUS_TEXT"]],
+                "period": 0,
+                "gameClock": "",
+                # Filled from the season schedule by the caller. Never put
+                # GAME_DATE_EST here: it is an ET date, not a UTC timestamp.
+                "gameTimeUTC": "",
+                "gameDateET": et_date,
+                "homeTeam": {**home_team, "score": home_score},
+                "awayTeam": {**away_team, "score": away_score},
+            }
+
+        # Recover scores for games that ScoreboardV2 still reports as scheduled
+        # even though the ET date is in the past. This is the legacy fallback
+        # for occasional stats-API lag.
+        if games and any(g["gameStatus"] == 1 for g in games.values()):
+            now_et_date = utc_to_et_date(datetime.now(timezone.utc).isoformat())
+            if et_date < now_et_date:
+                self._fill_scores_from_gamelog(list(games.values()), et_date)
+
+        return list(games.values())
+
+    def _fill_scores_from_gamelog(
+        self, games_list: list[dict[str, Any]], et_date: str
+    ) -> None:
+        """Best-effort score recovery from LeagueGameLog for past ET dates."""
+        try:
+            from datetime import datetime, timezone
+
+            from nba_api.stats.endpoints import leaguegamelog
+
+            from .timezone_utils import utc_to_et_date
+
+            now_et_date = utc_to_et_date(datetime.now(timezone.utc).isoformat())
+            if et_date >= now_et_date:
+                return
+
+            year, month, day = map(int, et_date.split("-"))
+            season_start_year = year if month >= 10 else year - 1
+            log_date = f"{month:02d}/{day:02d}/{year}"
+
+            log = leaguegamelog.LeagueGameLog(
+                season=season_start_year,
+                date_from_nullable=log_date,
+                date_to_nullable=log_date,
+            )
+            log_data = log.get_dict()
+            if "resultSets" not in log_data or not log_data["resultSets"]:
+                return
+
+            result_set = log_data["resultSets"][0]
+            log_headers = result_set["headers"]
+            log_rows = result_set["rowSet"]
+            log_map = {name: index for index, name in enumerate(log_headers)}
+
+            scores_map: dict[int, int] = {}
+            for log_row in log_rows:
+                team_id = log_row[log_map["TEAM_ID"]]
+                points = log_row[log_map["PTS"]]
+                if points is not None:
+                    scores_map[team_id] = points
+
+            for game in games_list:
+                if game.get("gameStatus") != 1:
+                    continue
+                home_id = game["homeTeam"]["teamId"]
+                away_id = game["awayTeam"]["teamId"]
+                if home_id in scores_map and away_id in scores_map:
+                    game["homeTeam"]["score"] = scores_map[home_id]
+                    game["awayTeam"]["score"] = scores_map[away_id]
+                    game["gameStatus"] = 3
+                    game["gameStatusText"] = "Final"
+        except Exception:
+            # The fallback is optional; never break the main endpoint for it.
+            return
+
     def _fetch_today_games_via_live_api_with_date(self, date_str: str) -> tuple[list[dict[str, Any]], str]:
         """
         Fetch games using the Live API (CDN).

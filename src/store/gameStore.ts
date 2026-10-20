@@ -57,10 +57,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (diagnostics.length > 0) {
             const latest = diagnostics[diagnostics.length - 1];
             const recent = diagnostics.slice(-3).map(d => `${d.operation} (${d.message})`);
-            set({
-                dataWarning: `Connection issue: ${latest.message}`,
-                dataWarningDetails: recent
-            });
+            if (latest) {
+                set({
+                    dataWarning: `Connection issue: ${latest.message}`,
+                    dataWarningDetails: recent
+                });
+            }
             return;
         }
     },
@@ -131,10 +133,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (diagnostics.length > 0) {
                 const latest = diagnostics[diagnostics.length - 1];
                 const recent = diagnostics.slice(-3).map(d => `${d.operation} (${d.message})`);
-                set({
-                    dataWarning: `Data degraded: ${latest.operation}`,
-                    dataWarningDetails: recent
-                });
+                if (latest) {
+                    set({
+                        dataWarning: `Data degraded: ${latest.operation}`,
+                        dataWarningDetails: recent
+                    });
+                }
             } else {
                 set({ dataWarning: null, dataWarningDetails: [] });
             }
@@ -221,7 +225,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // Skip scheduled games - no Reddit Game Thread exists yet
             if (game.gameStatus === 1) continue;
 
-            const gameDateStr = game.gameTimeUTC?.slice(0, 10);
+            const gameDateStr = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10);
             if (!gameDateStr) continue;
 
             try {

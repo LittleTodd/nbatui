@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Game } from '../services/apiClient.js';
-import { fetchGameHeat, type SocialHeat } from '../services/apiClient.js';
+import { fetchGameHeat, findGameOdds, type SocialHeat, type GameOdds } from '../services/apiClient.js';
 
 export interface HeatData {
     level: 'hot' | 'warm' | 'cold' | 'fire';
@@ -12,7 +12,7 @@ export interface HeatData {
  * Hook to get social heat data for games
  * Polling real API endpoints
  */
-export const useSocialHeat = (games: Game[], odds: Record<string, import('../services/apiClient.js').GameOdds> = {}) => {
+export const useSocialHeat = (games: Game[], odds: Record<string, GameOdds> = {}) => {
     const [heatMap, setHeatMap] = useState<Record<string, HeatData>>({});
 
     useEffect(() => {
@@ -58,23 +58,15 @@ export const useSocialHeat = (games: Game[], odds: Record<string, import('../ser
                     }
                 }
 
-                // Calculate Volume-based Heat (Financial Interest)
-                // Use Polymarket volume as a strong signal
-                // Check odds for this game
-                // const { findGameOdds } = require('../index.js'); // Circular dependency workaround or duplicate logic?
-                // Actually we can't require index.js easily here.
-                // We'll reimplement simple lookup or rely on passed matches.
-                // Since this hook runs inside the component render cycle, we might want to pass the specific game odds.
-                // But we are mapping over games.
-
-                // Let's implement robust lookup inline
-                const getOddsKey = (a: string, h: string, d: string) => `${a}_${h}_${d}`;
-                let gameVolume = 0;
-                const dateStr = game.gameTimeUTC?.slice(0, 10);
-                if (dateStr) {
-                    const key = getOddsKey(game.awayTeam.teamTricode, game.homeTeam.teamTricode, dateStr);
-                    if (odds[key]) gameVolume = odds[key].volume || 0;
-                }
+                // Use Polymarket volume as a strong signal.
+                const dateStr = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10);
+                const gameOdds = findGameOdds(
+                    odds,
+                    game.awayTeam.teamTricode,
+                    game.homeTeam.teamTricode,
+                    dateStr
+                );
+                const gameVolume = gameOdds?.volume || 0;
 
                 let volHeatVal = 0;
                 let volConf: HeatData = { level: 'cold', count: 0 };

@@ -8,7 +8,10 @@
   },
   "scripts": {
     "start": "bun run src/index.tsx",
-    "dev": "bun run --watch src/index.tsx"
+    "dev": "bun run --watch src/index.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:py": "cd data-service && venv/bin/python -m unittest discover -s tests -v"
   },
   "devDependencies": {
     "@types/bun": "latest",
