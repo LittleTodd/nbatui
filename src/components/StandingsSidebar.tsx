@@ -117,7 +117,7 @@ export const StandingsSidebar = ({ visible, onClose }: StandingsSidebarProps) =>
         );
     };
 
-    const renderPropTable = (title: string, candidates: any[]) => {
+    const renderPropTable = (title: string, candidates?: any[]) => {
         if (!candidates || candidates.length === 0) return null;
         return (
             <Box flexDirection="column" marginBottom={1}>

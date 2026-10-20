@@ -152,6 +152,18 @@ nba-tui/
 
 ---
 
+## 开发 | Development
+
+```bash
+bun run typecheck   # TypeScript 类型检查 / TypeScript typecheck
+bun run test        # Bun 测试 / Bun tests (local, not version-controlled)
+bun run test:py     # Python 单元测试 / Python unit tests
+```
+
+CI (`.github/workflows/ci.yml`) runs the typecheck and Python tests on every push and pull request.
+
+---
+
 ## License
 
 MIT

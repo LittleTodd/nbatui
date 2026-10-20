@@ -122,12 +122,12 @@ export function embedGamesInMap(
             if (game.gameClock) {
                 const ptMatch = game.gameClock.match(/PT(\d+)M/);
                 if (ptMatch) {
-                    const minutes = parseInt(ptMatch[1], 10);
+                    const minutes = parseInt(ptMatch[1] ?? '0', 10);
                     if (minutes < 3) isCrunchTime = true;
                 } else if (game.gameClock.includes(':')) {
                     // "MM:SS" format
                     const parts = game.gameClock.split(':');
-                    const minutes = parseInt(parts[0], 10);
+                    const minutes = parseInt(parts[0] ?? '0', 10);
                     if (minutes < 3) isCrunchTime = true;
                 } else {
                     // Fallback: if we can't parse but it's late game, assume true if period > 4 (OT)

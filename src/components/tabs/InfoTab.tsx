@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { TeamBackground, RetiredNumber, HallOfFamer } from '../../services/apiClient.js';
+import type { TeamBackground, RetiredNumber, HallOfFamer } from '../../services/apiClient.js';
 
 interface InfoTabProps {
     background: TeamBackground | null;
