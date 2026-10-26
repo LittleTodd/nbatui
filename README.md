@@ -3,7 +3,7 @@
 
 ![Terminal](https://img.shields.io/badge/Terminal-TUI-green) ![React](https://img.shields.io/badge/React-Ink-blue) ![Python](https://img.shields.io/badge/Python-FastAPI-yellow)
 
-![Screenshot](/src/gif/screenshot.png)
+![Screenshot](src/gif/screenshot.png)
 
 ---
 
@@ -72,8 +72,8 @@
 
 ```bash
 # 克隆仓库 | Clone repo
-git clone https://github.com/yourusername/nba-tui.git
-cd nba-tui
+git clone https://github.com/LittleTodd/nbatui.git
+cd nbatui
 
 # 运行安装脚本 | Run setup script
 ./setup.sh
