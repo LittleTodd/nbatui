@@ -33,10 +33,27 @@ fi
 # 3. Start Data Service (Background)
 cd data-service
 source venv/bin/activate
-# Install requirements quiet
-pip install -q -r requirements.txt >/dev/null 2>&1
-# Kill existing
-lsof -ti:8765 | xargs kill -9 2>/dev/null || true
+# Install requirements only if changed (BUG-10 startup optimization)
+REQ_STAMP="../.agent/setup-python.hash"
+CURRENT_HASH="$(shasum -a 256 requirements.txt 2>/dev/null | awk '{print $1}')"
+[ -z "$CURRENT_HASH" ] && CURRENT_HASH="$(md5 -q requirements.txt 2>/dev/null || true)"
+PREV_HASH=""
+[ -f "$REQ_STAMP" ] && PREV_HASH="$(cat "$REQ_STAMP" 2>/dev/null || true)"
+
+if [ -n "$CURRENT_HASH" ] && [ "$CURRENT_HASH" != "$PREV_HASH" ]; then
+    echo "Updating Python dependencies..."
+    pip install -q -r requirements.txt >/dev/null 2>&1
+    mkdir -p "../.agent"
+    echo "$CURRENT_HASH" > "$REQ_STAMP"
+fi
+
+# Clean up existing instance on port 8765 if it belongs to nba-data-service
+if lsof -ti:8765 >/dev/null 2>&1; then
+    HEALTH_STATUS=$(curl -s --max-time 1 http://localhost:8765/health 2>/dev/null || true)
+    if echo "$HEALTH_STATUS" | grep -q "nba-data-service"; then
+        lsof -ti:8765 | xargs kill -9 2>/dev/null || true
+    fi
+fi
 # Start
 python main.py > /dev/null 2>&1 &
 DATA_SERVICE_PID=$!
