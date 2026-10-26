@@ -76,17 +76,28 @@ class SocialPrefetchWorker:
                 if not game_id:
                     continue
                 
-                # 2. Record game end time (only records once)
-                cache_service.record_game_end_time(game_id)
-                
-                # 3. Check if 2+ hours have passed since game ended
-                end_time = cache_service.get_game_end_time(game_id)
-                if not end_time:
-                    continue
-                    
-                if datetime.now() < end_time + timedelta(hours=2):
-                    # Game ended less than 2 hours ago, skip for now
-                    continue
+                # 2. Check if 2+ hours have passed since game ended (BUG-14)
+                # If gameTimeUTC is available, NBA games average ~2.5 hours, so 2h after final
+                # is roughly 4.5 hours post-tipoff. This avoids forcing finished games to wait
+                # another 2 hours if the service was started long after the game ended.
+                game_time_utc = game.get('gameTimeUTC')
+                is_mature = False
+                if game_time_utc:
+                    try:
+                        from services.timezone_utils import parse_utc_timestamp
+                        from datetime import timezone
+                        tipoff_dt = parse_utc_timestamp(game_time_utc)
+                        if datetime.now(timezone.utc) >= tipoff_dt + timedelta(hours=4, minutes=30):
+                            is_mature = True
+                    except Exception:
+                        pass
+
+                if not is_mature:
+                    cache_service.record_game_end_time(game_id)
+                    end_time = cache_service.get_game_end_time(game_id)
+                    if not end_time or datetime.now() < end_time + timedelta(hours=2):
+                        # Game ended less than 2 hours ago, skip for now
+                        continue
                 
                 # 4. Get team names and date for cache keys
                 team1 = game['awayTeam']['teamName']
