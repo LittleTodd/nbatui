@@ -5,6 +5,18 @@
 
 const BASE_URL = process.env.DATA_SERVICE_URL || 'http://localhost:8765';
 
+const DEFAULT_TIMEOUT_MS = 15000;
+
+/**
+ * fetch() with a per-request timeout.
+ * A fresh AbortSignal is created for every call (signals are single-use:
+ * sharing one would abort every later request once it fires).
+ * Without this, a hung backend leaves the UI on the loading screen forever.
+ */
+function timedFetch(url: string, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<Response> {
+    return fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+}
+
 export interface ApiClientDiagnostic {
     operation: string;
     endpoint: string;
@@ -84,9 +96,7 @@ export interface HealthResponse {
 export async function checkHealth(): Promise<boolean> {
     const endpoint = '/health';
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`, {
-            signal: AbortSignal.timeout(3000)
-        });
+        const res = await timedFetch(`${BASE_URL}${endpoint}`, 3000);
         if (!res.ok) {
             recordDiagnostic('checkHealth', endpoint, `HTTP ${res.status}`, res.status);
             return false;
@@ -108,7 +118,7 @@ export async function checkHealth(): Promise<boolean> {
 export async function fetchTodayGames(): Promise<Game[]> {
     const endpoint = '/games/today';
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchTodayGames', endpoint, `HTTP ${res.status}`, res.status);
             return [];
@@ -127,7 +137,7 @@ export async function fetchTodayGames(): Promise<Game[]> {
 export async function fetchGamesByDate(date: string): Promise<Game[]> {
     const endpoint = `/games/date/${date}`;
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchGamesByDate', endpoint, `HTTP ${res.status}`, res.status);
             return [];
@@ -146,7 +156,7 @@ export async function fetchGamesByDate(date: string): Promise<Game[]> {
 export async function fetchLiveGames(): Promise<Game[]> {
     const endpoint = '/games/live';
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchLiveGames', endpoint, `HTTP ${res.status}`, res.status);
             return [];
@@ -330,7 +340,7 @@ export function getGameStatusInfo(game: Game): { text: string; isLive: boolean; 
 export async function fetchBoxScore(gameId: string): Promise<any> {
     const endpoint = `/games/${gameId}/boxscore`;
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchBoxScore', endpoint, `HTTP ${res.status}`, res.status);
             return null;
@@ -368,7 +378,7 @@ export async function fetchPlayByPlay(gameId: string, gameStatus?: number): Prom
         if (gameStatus !== undefined) {
             url += `?status=${gameStatus}`;
         }
-        const res = await fetch(url);
+        const res = await timedFetch(url);
         if (!res.ok) {
             recordDiagnostic('fetchPlayByPlay', endpoint, `HTTP ${res.status}`, res.status);
             return null;
@@ -396,7 +406,7 @@ export interface ScoreCurveData {
 export async function fetchScoreCurve(gameId: string): Promise<ScoreCurveData | null> {
     const endpoint = `/games/${gameId}/score-curve`;
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchScoreCurve', endpoint, `HTTP ${res.status}`, res.status);
             return null;
@@ -415,7 +425,7 @@ export async function fetchScoreCurve(gameId: string): Promise<ScoreCurveData | 
 export async function fetchStandings(): Promise<any> {
     const endpoint = '/games/standings';
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchStandings', endpoint, `HTTP ${res.status}`, res.status);
             return null;
@@ -452,7 +462,7 @@ export interface OddsResponse {
 export async function fetchPolymarketOdds(): Promise<Record<string, GameOdds>> {
     const endpoint = '/api/polymarket/odds';
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchPolymarketOdds', endpoint, `HTTP ${res.status}`, res.status);
             return {};
@@ -538,7 +548,7 @@ export interface HistoryResponse {
 export async function fetchTokenHistory(clobId: string): Promise<PricePoint[]> {
     const endpoint = `/api/polymarket/history/${clobId}`;
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchTokenHistory', endpoint, `HTTP ${res.status}`, res.status);
             return [];
@@ -563,7 +573,7 @@ export interface PropsResponse {
 export async function fetchPolymarketProps(): Promise<Record<string, Candidate[]>> {
     const endpoint = '/api/polymarket/props';
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchPolymarketProps', endpoint, `HTTP ${res.status}`, res.status);
             return {};
@@ -606,7 +616,7 @@ export async function fetchGameHeat(team1: string, team2: string, status?: numbe
 
         if (params.size > 0) url += `?${params.toString()}`;
 
-        const res = await fetch(url);
+        const res = await timedFetch(url);
         if (!res.ok) {
             const endpoint = params.size > 0 ? `${endpointBase}?${params.toString()}` : endpointBase;
             recordDiagnostic('fetchGameHeat', endpoint, `HTTP ${res.status}`, res.status);
@@ -640,7 +650,7 @@ export async function fetchGameTweets(team1: string, team2: string, status?: num
 
         if (params.size > 0) url += `?${params.toString()}`;
 
-        const res = await fetch(url);
+        const res = await timedFetch(url);
         if (!res.ok) {
             const endpoint = params.size > 0 ? `${endpointBase}?${params.toString()}` : endpointBase;
             recordDiagnostic('fetchGameTweets', endpoint, `HTTP ${res.status}`, res.status);
@@ -804,7 +814,7 @@ export interface TeamInfo {
 export async function fetchTeamRoster(teamId: number): Promise<TeamRoster | null> {
     const endpoint = `/games/team/${teamId}/roster`;
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchTeamRoster', endpoint, `HTTP ${res.status}`, res.status);
             return null;
@@ -822,7 +832,7 @@ export async function fetchTeamRoster(teamId: number): Promise<TeamRoster | null
 export async function fetchTeamGamelog(teamId: number, lastN: number = 10): Promise<TeamGamelog | null> {
     const endpoint = `/games/team/${teamId}/gamelog?last_n=${lastN}`;
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchTeamGamelog', endpoint, `HTTP ${res.status}`, res.status);
             return null;
@@ -840,7 +850,7 @@ export async function fetchTeamGamelog(teamId: number, lastN: number = 10): Prom
 export async function fetchTeamInfo(teamId: number): Promise<TeamInfo | null> {
     const endpoint = `/games/team/${teamId}/info`;
     try {
-        const res = await fetch(`${BASE_URL}${endpoint}`);
+        const res = await timedFetch(`${BASE_URL}${endpoint}`);
         if (!res.ok) {
             recordDiagnostic('fetchTeamInfo', endpoint, `HTTP ${res.status}`, res.status);
             return null;
