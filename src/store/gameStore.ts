@@ -32,6 +32,9 @@ interface GameState {
     fetchHeatForGames: () => Promise<void>;
 }
 
+// Track request sequence to prevent out-of-order race conditions when switching dates rapidly (BUG-12)
+let activeLoadSequence = 0;
+
 export const useGameStore = create<GameState>((set, get) => ({
     games: [],
     odds: {},
@@ -68,6 +71,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     loadGamesForDate: async (date: Date, isBackgroundRefresh = false) => {
+        const requestSeq = ++activeLoadSequence;
         if (!isBackgroundRefresh) {
             set({ loading: true });
         }
@@ -95,6 +99,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                     gamesPromise,
                     fetchPolymarketOdds()
                 ]);
+            }
+
+            // Discard stale response if another load request was triggered while fetching
+            if (requestSeq !== activeLoadSequence) {
+                return;
             }
 
             let newSelectedIndex = 0;
@@ -147,6 +156,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             get().fetchHeatForGames();
 
         } catch (error) {
+            if (requestSeq !== activeLoadSequence) {
+                return;
+            }
             console.error("Failed to load games:", error);
             set({ loading: false, dataWarning: 'Data load failed', dataWarningDetails: ['loadGamesForDate exception'] });
         }
