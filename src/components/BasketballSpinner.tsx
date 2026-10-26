@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Text } from 'ink';
+import { Box, Text } from 'ink';
 
 const frames = [
     "🏀        ",
@@ -30,7 +30,11 @@ const BasketballSpinner = () => {
         return () => clearInterval(timer);
     }, []);
 
-    return <Text color="orange">{frames[frame]}</Text>;
+    return (
+        <Box width={12} flexShrink={0}>
+            <Text color="orange">{frames[frame]}</Text>
+        </Box>
+    );
 };
 
 export default BasketballSpinner;

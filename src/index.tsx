@@ -194,7 +194,8 @@ function App() {
         warningHeight += 1;
     }
 
-    const availableHeight = termHeight - 12 - warningHeight;
+    const nonMapHeight = 17 + warningHeight;
+    const availableHeight = Math.max(0, termHeight - nonMapHeight);
     const mapHeight = Math.max(0, Math.min(availableHeight, 25));
     const mapLines = useMemo(() => getCleanMap().slice(0, mapHeight), [mapHeight]);
 
@@ -230,18 +231,18 @@ function App() {
                             flexDirection="column"
                             alignItems="center"
                             justifyContent="center"
-                            height={mapHeight}
+                            height={Math.max(8, mapHeight)}
                             borderStyle="round"
                             borderColor="cyan"
                             paddingX={6}
-                            paddingY={2}
+                            paddingY={1}
                         >
                             <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
-                            <Box marginTop={2}>
+                            <Box marginTop={1}>
                                 <BasketballSpinner />
                                 <Text color="yellow"> Loading game data...</Text>
                             </Box>
-                            <Box marginTop={1}>
+                            <Box marginTop={0}>
                                 <Text dimColor>Fetching today's NBA schedule</Text>
                             </Box>
                         </Box>
@@ -251,11 +252,11 @@ function App() {
                             flexDirection="column"
                             alignItems="center"
                             justifyContent="center"
-                            height={mapHeight}
+                            height={Math.max(8, mapHeight)}
                             borderStyle="round"
                             borderColor="gray"
                             paddingX={4}
-                            paddingY={2}
+                            paddingY={1}
                         >
                             <Text bold color="yellow">🏀 No Games Scheduled 🏀</Text>
                             <Box marginTop={1}>
@@ -322,7 +323,7 @@ function App() {
                 loading={loading}
                 gamesCount={games.length}
                 warning={dataWarning}
-                SpinnerComponent={BasketballSpinner}
+                termWidth={termWidth}
             />
         </Box>
     );

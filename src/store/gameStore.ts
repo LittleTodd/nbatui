@@ -159,8 +159,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (requestSeq !== activeLoadSequence) {
                 return;
             }
-            console.error("Failed to load games:", error);
-            set({ loading: false, dataWarning: 'Data load failed', dataWarningDetails: ['loadGamesForDate exception'] });
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            set({
+                loading: false,
+                dataWarning: 'Data load failed',
+                dataWarningDetails: [`loadGamesForDate exception: ${errorMsg}`]
+            });
         }
     },
 
