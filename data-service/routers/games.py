@@ -2,6 +2,8 @@
 NBA Games Router
 Endpoints for game data from nba_api
 """
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException
 from services.nba_service import NBAService
 
@@ -22,6 +24,10 @@ def get_today_games():
 @router.get("/date/{date_str}")
 def get_games_by_date_endpoint(date_str: str):
     """Get games for a specific date (YYYY-MM-DD)"""
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
     try:
         games = nba_service.get_games_by_date(date_str)
         return {"games": games, "count": len(games)}
@@ -68,6 +74,8 @@ def get_game_boxscore(game_id: str):
         if not data:
             raise HTTPException(status_code=404, detail="Game not found or no data available")
         return data
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -83,6 +91,8 @@ def get_game_playbyplay(game_id: str, status: int = None):
         if not data:
             raise HTTPException(status_code=404, detail="Game not found or no data available")
         return data
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -98,7 +108,7 @@ def get_game_score_curve(game_id: str):
         data = nba_service.get_playbyplay(game_id)
         if not data:
             raise HTTPException(status_code=404, detail="Game not found or no data available")
-        
+
         actions = data.get('actions', [])
         if not actions:
             return {"points": [], "homeTeam": "", "awayTeam": ""}
@@ -148,6 +158,8 @@ def get_game_score_curve(game_id: str):
             "homeTeam": data.get('homeTeam', {}).get('teamTricode', ''),
             "awayTeam": data.get('awayTeam', {}).get('teamTricode', '')
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

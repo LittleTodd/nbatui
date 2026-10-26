@@ -16,7 +16,7 @@ app = FastAPI(
 # CORS for local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:8765", "http://127.0.0.1:8765"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,4 +63,4 @@ async def shutdown_event():
 if __name__ == "__main__":
     import uvicorn
     # Disable access logs to prevent terminal flicker in TUI
-    uvicorn.run(app, host="0.0.0.0", port=8765, log_level="warning", access_log=False)
+    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning", access_log=False)
