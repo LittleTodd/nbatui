@@ -16,7 +16,7 @@ echo -e "${BLUE}🚀 Launching NBA-TUI...${NC}"
 
 # 1. Start Backend in Background
 echo "starting data-service..."
-(cd data-service && source venv/bin/activate && python3 main.py) &
+(cd data-service && source venv/bin/activate && python3 main.py >> backend.log 2>&1) &
 
 # Wait for backend to be ready
 # (Simple sleep for now, could be a health check loop)

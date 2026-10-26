@@ -55,7 +55,7 @@ if lsof -ti:8765 >/dev/null 2>&1; then
     fi
 fi
 # Start
-python main.py > /dev/null 2>&1 &
+python main.py >> backend.log 2>&1 &
 DATA_SERVICE_PID=$!
 cd ..
 
@@ -68,7 +68,7 @@ while true; do
     WAIT_ROUNDS=$((WAIT_ROUNDS + 1))
     if [ "$WAIT_ROUNDS" -gt "$MAX_WAIT_ROUNDS" ]; then
         echo -e "${YELLOW}Data service did not become ready within 30 seconds.${NC}"
-        echo -e "${YELLOW}Check the backend manually: cd data-service && python main.py${NC}"
+        echo -e "${YELLOW}Check backend.log: tail -n 20 data-service/backend.log${NC}"
         kill $DATA_SERVICE_PID 2>/dev/null || true
         exit 1
     fi
@@ -82,18 +82,17 @@ while true; do
         # Try to play the loading animation, fallback to text if terminal too small
         if [ -f "src/gif/loading.gif" ]; then
             # Play once (-m 1), very slow (-s very_slow = 1 second per frame)
-            # Show errors for debugging
-            ./data-service/venv/bin/ascii-art-animator -f src/gif/loading.gif -m 1 -s very_slow -C cyan
-            ANIM_EXIT=$?
-            if [ $ANIM_EXIT -ne 0 ]; then
-                echo -e "${YELLOW}Animation failed (exit code $ANIM_EXIT), using text fallback${NC}"
+            TERM_COLS=$(tput cols 2>/dev/null || echo 80)
+            [ "$TERM_COLS" -gt 100 ] && TERM_COLS=100
+            ANIM_EXIT=0
+            ./data-service/venv/bin/ascii-art-animator -f src/gif/loading.gif -m 1 -s very_slow -c "$TERM_COLS" 2>/dev/null || ANIM_EXIT=$?
+            if [ "$ANIM_EXIT" -ne 0 ]; then
                 echo -e "${CYAN}🏀 Loading NBA TUI...${NC}"
-                sleep 2
+                sleep 1
             fi
         else
-            echo -e "${YELLOW}Loading GIF not found${NC}"
             echo -e "${CYAN}🏀 Loading NBA TUI...${NC}"
-            sleep 2
+            sleep 1
         fi
         break
     fi

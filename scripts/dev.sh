@@ -23,7 +23,7 @@ fi
 # Start Python data service in background
 echo "🐍 Starting Data Service on port 8765..."
 cd "$PROJECT_ROOT/data-service"
-uvicorn main:app --reload --port 8765 &
+uvicorn main:app --reload --port 8765 >> backend.log 2>&1 &
 DATA_SERVICE_PID=$!
 
 # Wait for service to be ready
