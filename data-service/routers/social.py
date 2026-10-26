@@ -80,7 +80,8 @@ def get_game_heat(
         return {"count": 0, "level": "cold", "trending": False, "message": "Game not started"}
 
     # 2. Check Memory Cache (for all games)
-    mem_key = f"heat_{team1}_{team2}"
+    date_key = date or "today"
+    mem_key = f"heat_{team1}_{team2}_{date_key}"
     cached = get_from_mem_cache(mem_key)
     if cached:
         return cached
@@ -196,7 +197,8 @@ def get_game_tweets(
         return {"tweets": []}
 
     # 2. Check Memory Cache
-    mem_key = f"comments_{team1}_{team2}_{limit}"
+    date_key = date or "today"
+    mem_key = f"comments_{team1}_{team2}_{date_key}_{limit}"
     cached = get_from_mem_cache(mem_key)
     if cached:
         return cached
