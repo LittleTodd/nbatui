@@ -97,6 +97,29 @@ def get_game_playbyplay(game_id: str, status: int = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _parse_clock_seconds(clock: str, period: int) -> float:
+    """Parse ISO duration clock string (e.g. PT12M00.00S, PT45.20S) to remaining seconds."""
+    default_seconds = 300.0 if period > 4 else 720.0
+    if not clock or not isinstance(clock, str):
+        return default_seconds
+    try:
+        raw = clock.replace('PT', '').strip()
+        minutes = 0.0
+        seconds = 0.0
+        if 'M' in raw:
+            parts = raw.split('M')
+            minutes = float(parts[0])
+            sec_part = parts[1].replace('S', '')
+            seconds = float(sec_part) if sec_part else 0.0
+        elif 'S' in raw:
+            seconds = float(raw.replace('S', ''))
+        else:
+            return default_seconds
+        return max(0.0, minutes * 60.0 + seconds)
+    except (ValueError, IndexError, TypeError):
+        return default_seconds
+
+
 @router.get("/{game_id}/score-curve")
 def get_game_score_curve(game_id: str):
     """
@@ -112,39 +135,40 @@ def get_game_score_curve(game_id: str):
         actions = data.get('actions', [])
         if not actions:
             return {"points": [], "homeTeam": "", "awayTeam": ""}
-        
+
+        # Determine total game duration to scale progress smoothly to 0-100% even with OT (BUG-15)
+        max_period = max(4, max((action.get('period', 1) for action in actions), default=4))
+        total_seconds = (4 * 720.0) + (max_period - 4) * 300.0
+
         # Extract scoring events (when score changes)
         points = []
         last_home = "0"
         last_away = "0"
-        
+
         for action in actions:
             home = action.get('scoreHome', '0') or '0'
             away = action.get('scoreAway', '0') or '0'
-            
+
             # Only add when score changes
             if home != last_home or away != last_away:
                 period = action.get('period', 1)
                 clock = action.get('clock', 'PT12M00.00S')
-                
-                # Parse clock to get minutes remaining
-                try:
-                    minutes = float(clock.replace('PT', '').split('M')[0])
-                except:
-                    minutes = 12.0
-                
-                # Calculate progress (0-100) across all periods
-                # Q1: 0-25, Q2: 25-50, Q3: 50-75, Q4: 75-100
-                period_progress = (12 - minutes) / 12
-                overall_progress = ((period - 1) * 25) + (period_progress * 25)
-                
+                rem_seconds = _parse_clock_seconds(clock, period)
+
+                if period <= 4:
+                    elapsed = ((period - 1) * 720.0) + max(0.0, 720.0 - rem_seconds)
+                else:
+                    elapsed = (4 * 720.0) + ((period - 5) * 300.0) + max(0.0, 300.0 - rem_seconds)
+
+                overall_progress = min(100.0, max(0.0, (elapsed / total_seconds) * 100.0))
+
                 points.append({
                     "time": round(overall_progress, 1),
                     "homeScore": int(home),
                     "awayScore": int(away),
                     "period": period
                 })
-                
+
                 last_home = home
                 last_away = away
         
