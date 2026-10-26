@@ -16,18 +16,18 @@ export const TERRAIN_COLORS: Record<TerrainRegion, string> = {
     coast: '#4682b4',        // Steel blue (coastal areas)
 };
 
-// Terrain textures using expressive Unicode characters
+// Terrain textures using expressive Unicode characters (all single-column width)
 export const TERRAIN_TEXTURES: Record<TerrainRegion, string[]> = {
-    west_coast: ['♠', '♠', '♠'],     // Forest/trees for Pacific Northwest (simplified)
-    mountain: ['▲', '▲', '▲'],        // Mountains for Rockies (simplified)
-    plains: ['·', '░', '·'],            // Sparse dots for Great Plains
-    midwest: ['♣', '·', '♣'],           // Farmland/trees
-    east: ['♠', '♠', '♣'],             // Dense forest for Eastern US (simplified)
-    coast: ['≈', '🌊', '≈'],            // Waves for coastal areas
+    west_coast: ['♠', '♠', '♠'],     // Forest/trees for Pacific Northwest
+    mountain: ['▲', '▲', '▲'],        // Mountains for Rockies
+    plains: ['·', '░', '·'],          // Sparse dots for Great Plains
+    midwest: ['♣', '·', '♣'],         // Farmland/trees
+    east: ['♠', '♠', '♣'],           // Dense forest for Eastern US
+    coast: ['~', '≈', '∿'],          // Single-width waves for coastal areas
 };
 
-// Wave animation frames for coastal areas
-export const WAVE_FRAMES = ['≈', '🌊', '∼', '～'];
+// Wave animation frames for coastal areas (guaranteed strictly 1 column width to prevent text wrapping)
+export const WAVE_FRAMES = ['~', '≈', '∼', '∿'];
 
 /**
  * Determine terrain region based on column position

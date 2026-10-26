@@ -194,7 +194,7 @@ function App() {
         warningHeight += 1;
     }
 
-    const nonMapHeight = 17 + warningHeight;
+    const nonMapHeight = 18 + warningHeight;
     const availableHeight = Math.max(0, termHeight - nonMapHeight);
     const mapHeight = Math.max(0, Math.min(availableHeight, 25));
     const mapLines = useMemo(() => getCleanMap().slice(0, mapHeight), [mapHeight]);
@@ -210,7 +210,7 @@ function App() {
     const dateDisplay = isSameDay(currentDate, new Date()) ? 'TODAY' : format(currentDate, 'yyyy-MM-dd');
 
     return (
-        <Box flexDirection="column" height={termHeight}>
+        <Box flexDirection="column">
             {(isMapCramped || isSidebarCramped) && (
                 <Box borderStyle="double" borderColor="red" flexDirection="column" alignItems="center" marginBottom={1}>
                     <Text color="red" bold>⚠️  Resolution Warning</Text>
@@ -222,7 +222,7 @@ function App() {
             {/* Header */}
             <Header dateDisplay={dateDisplay} />
 
-            <Box flexDirection="row" flexGrow={1} justifyContent="center" marginTop={1}>
+            <Box flexDirection="row" justifyContent="center" marginTop={1}>
                 {/* ... Main Content ... */}
                 <Box flexDirection="column" alignItems="center">
                     {/* Initial Loading State - Show loading animation */}
@@ -329,4 +329,26 @@ function App() {
     );
 }
 
-render(<App />);
+if (process.stdout.isTTY) {
+    // Enter alternate screen buffer and move cursor to top-left
+    process.stdout.write('\x1b[?1049h\x1b[H');
+    const restoreTerminal = () => {
+        process.stdout.write('\x1b[?1049l\x1b[?25h');
+    };
+    process.on('exit', restoreTerminal);
+    process.on('SIGINT', () => {
+        restoreTerminal();
+        process.exit(0);
+    });
+    process.on('SIGTERM', () => {
+        restoreTerminal();
+        process.exit(0);
+    });
+}
+
+const appInstance = render(<App />);
+appInstance.waitUntilExit().then(() => {
+    if (process.stdout.isTTY) {
+        process.stdout.write('\x1b[?1049l\x1b[?25h');
+    }
+});

@@ -92,7 +92,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
     };
 
     if (markersOnRow.length === 0) {
-        return <Text>{renderTerrainSegment(line, 0, 'bg')}</Text>;
+        return <Text wrap="truncate">{renderTerrainSegment(line, 0, 'bg')}</Text>;
     }
 
     markersOnRow.sort((a, b) => a.col - b.col);
@@ -101,17 +101,20 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
     let lastEnd = 0;
 
     markersOnRow.forEach((marker, i) => {
-        if (marker.col > lastEnd) {
+        const startCol = Math.max(lastEnd, marker.col);
+        if (startCol >= line.length) return;
+
+        if (startCol > lastEnd) {
             segments.push(
                 <Text key={`dim-${i}`}>
-                    {renderTerrainSegment(line.slice(lastEnd, marker.col), lastEnd, `bg-${i}`)}
+                    {renderTerrainSegment(line.slice(lastEnd, startCol), lastEnd, `bg-${i}`)}
                 </Text>
             );
         }
 
         const rawContent = marker.content;
         const game = games[marker.gameIdx];
-        if (!game) return null;
+        if (!game) return;
 
         const away = game.awayTeam.teamTricode;
         const home = game.homeTeam.teamTricode;
@@ -209,7 +212,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
             </Text>
         );
 
-        lastEnd = marker.col + marker.length;
+        lastEnd = Math.min(line.length, startCol + marker.length);
     });
 
     if (lastEnd < line.length) {
@@ -220,7 +223,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
         );
     }
 
-    return <Text>{segments}</Text>;
+    return <Text wrap="truncate">{segments}</Text>;
 }
 
 export const MapLine = memo(MapLineComponent, (prev, next) => {
