@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-import { type Game, type GameOdds, fetchGamesByDate, checkHealth, fetchPolymarketOdds, consumeApiDiagnostics, type ApiClientDiagnostic, type SocialHeat as HeatData } from '../services/apiClient.js';
+import { type Game, type GameOdds, fetchGamesByDate, checkHealth, fetchPolymarketOdds, consumeApiDiagnostics, type ApiClientDiagnostic } from '../services/apiClient.js';
 import { format, subDays, isSameDay } from 'date-fns';
 import { getTeamPosition } from '../data/teamCoords.js';
 
@@ -26,10 +26,6 @@ interface GameState {
     refreshGames: () => Promise<void>;
     moveSelection: (direction: 'up' | 'down') => void;
     changeDate: (direction: 'prev' | 'next') => void;
-
-    // Social Heat
-    socialHeat: Record<string, HeatData>;
-    fetchHeatForGames: () => Promise<void>;
 }
 
 // Track request sequence to prevent out-of-order race conditions when switching dates rapidly (BUG-12)
@@ -151,10 +147,6 @@ export const useGameStore = create<GameState>((set, get) => ({
             } else {
                 set({ dataWarning: null, dataWarningDetails: [] });
             }
-
-            // Trigger background heat fetch
-            get().fetchHeatForGames();
-
         } catch (error) {
             if (requestSeq !== activeLoadSequence) {
                 return;
@@ -217,63 +209,5 @@ export const useGameStore = create<GameState>((set, get) => ({
         // However, standard pattern is to update state and let React effect handle data fetching?
         // OR we handle it here. Let's start by just setting date, and we'll call loadGamesForDate in a store subscription or component effect.
         set({ currentDate: newDate });
-    },
-
-    // Heat Map State
-    socialHeat: {},
-
-    setSocialHeat: (heatMap: Record<string, HeatData>) => set({ socialHeat: heatMap }),
-
-    // Fetch heat for current games (with rate limiting to avoid Reddit 429)
-    fetchHeatForGames: async () => {
-        const { games } = get();
-        if (games.length === 0) return;
-
-        const { fetchGameHeat } = await import('../services/apiClient.js');
-
-        const heatMap: Record<string, HeatData> = {};
-
-        // Fetch sequentially with delay to avoid Reddit rate limiting (429)
-        // Limit to first 3 games for map overview heat display
-        const gamesToFetch = games.slice(0, 3);
-
-        for (const game of gamesToFetch) {
-            // Skip scheduled games - no Reddit Game Thread exists yet
-            if (game.gameStatus === 1) continue;
-
-            const gameDateStr = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10);
-            if (!gameDateStr) continue;
-
-            try {
-                const heat = await fetchGameHeat(
-                    game.awayTeam.teamName,
-                    game.homeTeam.teamName,
-                    game.gameStatus,
-                    gameDateStr,
-                    game.gameId
-                );
-
-                if (heat) {
-                    heatMap[game.gameId] = heat;
-                }
-            } catch {
-                // Silently skip on error
-            }
-
-            // Small delay between requests to respect Reddit rate limits
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
-
-        set({ socialHeat: heatMap });
-
-        const diagnostics = consumeApiDiagnostics();
-        if (diagnostics.length > 0) {
-            const latest = diagnostics[diagnostics.length - 1];
-            const recent = diagnostics.slice(-3).map((d: ApiClientDiagnostic) => `${d.operation} (${d.message})`);
-            set({
-                dataWarning: `Social data unavailable for some games`,
-                dataWarningDetails: recent
-            });
-        }
     },
 }));

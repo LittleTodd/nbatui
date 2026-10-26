@@ -1,6 +1,5 @@
 
 import type { Game, GameOdds } from '../services/apiClient.js';
-import type { HeatData } from '../hooks/useSocialHeat.js';
 import { getTeamPosition } from '../data/teamCoords.js';
 
 // Convert percentage position to character position
@@ -14,7 +13,6 @@ export function createGameMarker(
     isSelected: boolean,
     isHighlighted: boolean = false,
     odds?: GameOdds,
-    heat?: HeatData,
     isCrunchTime: boolean = false
 ): string {
     const isLive = game.gameStatus === 2;
@@ -51,19 +49,16 @@ export function createGameMarker(
     // Add live indicator prefix if game is live
     const livePrefix = isLive ? '●● ' : '';
 
-    // Add Heat Icon to marker if very hot
-    const heatSuffix = (heat?.level === 'fire' || heat?.level === 'hot') ? ' 🔥' : '';
-
     if (isSelected) {
-        return `${livePrefix}[${content}${heatSuffix}]`;
+        return `${livePrefix}[${content}]`;
     } else if (isHighlighted) {
-        return `${livePrefix}»${content}${heatSuffix}«`;
+        return `${livePrefix}»${content}«`;
     } else if (isCrunchTime) {
-        return `❗ ${content}${heatSuffix}`;
+        return `❗ ${content}`;
     } else if (isLive) {
-        return `●● ${content}${heatSuffix}`;
+        return `●● ${content}`;
     } else {
-        return `${content}${heatSuffix}`;
+        return content;
     }
 }
 
@@ -85,7 +80,6 @@ export interface GameColor {
     isLive: boolean;
     isSelected: boolean;
     isHighlighted: boolean;
-    heat?: HeatData;
     isCrunchTime?: boolean;
 }
 
@@ -95,8 +89,7 @@ export function embedGamesInMap(
     games: Game[],
     selectedIndex: number,
     termWidth: number,
-    searchFilter: string = '',
-    heatMap: Record<string, HeatData> = {}
+    searchFilter: string = ''
 ): { lines: string[]; gameColors: Map<number, GameColor> } {
     const lines = mapLines.map(l => l.padEnd(termWidth, ' ').slice(0, termWidth));
     const gameColors = new Map<number, GameColor>();
@@ -112,7 +105,6 @@ export function embedGamesInMap(
         // We need to ensure searching covers city/name too, previously checkGameMatchesFilter used tricode only in some versions?
         // Let's ensure checkGameMatchesFilter is robust (I updated it above to include city/name).
         const isHighlighted = checkGameMatchesFilter(game, searchFilter);
-        const heat = heatMap[game.gameId];
 
         // Crunch Time Logic: 4th Qtr or OT, score diff <= 5, AND clock < 3 minutes
         let isCrunchTime = false;
@@ -140,7 +132,7 @@ export function embedGamesInMap(
         // Pass isCrunchTime to marker builder if we want it in text, 
         // OR just keep it in GameColor for component level styling.
         // Let's add a "!" prefix in text if crunch time?
-        const marker = createGameMarker(game, isSelected, isHighlighted, undefined, heat, isCrunchTime);
+        const marker = createGameMarker(game, isSelected, isHighlighted, undefined, isCrunchTime);
 
         return {
             game,
@@ -151,7 +143,6 @@ export function embedGamesInMap(
             isLive: game.gameStatus === 2,
             isSelected,
             isHighlighted,
-            heat,
             isCrunchTime
         };
     });
@@ -161,9 +152,9 @@ export function embedGamesInMap(
     const occupiedRanges = new Map<number, Array<{ start: number; end: number }>>();
 
     for (const gamePos of gamesWithPos) {
-        const { idx, markerLen, isLive, isSelected, isHighlighted, heat, isCrunchTime } = gamePos;
+        const { idx, markerLen, isLive, isSelected, isHighlighted, isCrunchTime } = gamePos;
         let { row, col } = gamePos;
-        const marker = createGameMarker(gamePos.game, isSelected, isHighlighted, undefined, heat, isCrunchTime);
+        const marker = createGameMarker(gamePos.game, isSelected, isHighlighted, undefined, isCrunchTime);
 
         col = Math.max(0, Math.min(col, maxWidth - markerLen));
         row = Math.max(0, Math.min(row, maxHeight - 1));
@@ -191,7 +182,7 @@ export function embedGamesInMap(
             const before = line.slice(0, col);
             const after = line.slice(col + markerLen);
             lines[row] = before + marker + after;
-            gameColors.set(idx, { row, col, isLive, isSelected, isHighlighted, heat, isCrunchTime });
+            gameColors.set(idx, { row, col, isLive, isSelected, isHighlighted, isCrunchTime });
         }
     }
 

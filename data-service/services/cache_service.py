@@ -79,19 +79,6 @@ def _ensure_tables_and_schema(conn: sqlite3.Connection) -> None:
             )
         ''')
         conn.execute('''
-            CREATE TABLE IF NOT EXISTS social_cache (
-                key TEXT PRIMARY KEY,
-                data TEXT NOT NULL,
-                cached_at TEXT NOT NULL
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS game_end_times (
-                game_id TEXT PRIMARY KEY,
-                end_time TEXT NOT NULL
-            )
-        ''')
-        conn.execute('''
             CREATE TABLE IF NOT EXISTS schedule_cache (
                 date TEXT PRIMARY KEY,
                 data TEXT NOT NULL,
@@ -295,62 +282,16 @@ def get_cached_boxscore(game_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def cache_social(key: str, data: Dict[str, Any]) -> None:
-    """
-    Cache social data (tweets/heat) persistently.
-    
-    Args:
-        key: Unique key (e.g., heat_LAL_BOS_2023-12-25)
-        data: Social data dictionary
-    """
-    try:
-        with get_db() as conn:
-            conn.execute(
-                'INSERT OR REPLACE INTO social_cache (key, data, cached_at) VALUES (?, ?, ?)',
-                (key, json.dumps(data), datetime.now().isoformat())
-            )
-            conn.commit()
-    except Exception as e:
-        print(f"[Cache] Warning in cache_social: {e}", flush=True)
-
-
-def get_cached_social(key: str) -> Optional[Dict[str, Any]]:
-    """
-    Get cached social data.
-    
-    Args:
-        key: Unique key
-        
-    Returns:
-        Data if cached, None otherwise
-    """
-    try:
-        with get_db() as conn:
-            cursor = conn.execute(
-                'SELECT data FROM social_cache WHERE key = ?',
-                (key,)
-            )
-            row = cursor.fetchone()
-            if row:
-                return json.loads(row[0])
-            return None
-    except Exception as e:
-        print(f"[Cache] Warning in get_cached_social: {e}", flush=True)
-        return None
-
-
 def get_cache_stats() -> Dict[str, int]:
     """Get cache statistics"""
     try:
         with get_db() as conn:
             games_count = conn.execute('SELECT COUNT(*) FROM games_cache').fetchone()[0]
             boxscore_count = conn.execute('SELECT COUNT(*) FROM boxscore_cache').fetchone()[0]
-            social_count = conn.execute('SELECT COUNT(*) FROM social_cache').fetchone()[0]
             playbyplay_count = conn.execute('SELECT COUNT(*) FROM playbyplay_cache').fetchone()[0]
             return {
                 "cached_dates": games_count,
                 "cached_boxscores": boxscore_count,
-                "cached_social": social_count,
                 "cached_playbyplay": playbyplay_count
             }
     except Exception as e:
@@ -399,47 +340,6 @@ def get_cached_playbyplay(game_id: str) -> Optional[Dict[str, Any]]:
             return None
     except Exception as e:
         print(f"[Cache] Warning in get_cached_playbyplay: {e}", flush=True)
-        return None
-
-
-def record_game_end_time(game_id: str) -> None:
-    """
-    Record the time when a game transitions to status=3 (Final).
-    Only records if not already recorded.
-    """
-    try:
-        with get_db() as conn:
-            cursor = conn.execute(
-                'SELECT end_time FROM game_end_times WHERE game_id = ?',
-                (game_id,)
-            )
-            if cursor.fetchone() is None:
-                conn.execute(
-                    'INSERT INTO game_end_times (game_id, end_time) VALUES (?, ?)',
-                    (game_id, datetime.now().isoformat())
-                )
-                conn.commit()
-    except Exception as e:
-        print(f"[Cache] Warning in record_game_end_time: {e}", flush=True)
-
-
-def get_game_end_time(game_id: str) -> Optional[datetime]:
-    """
-    Get the recorded end time for a game.
-    Returns None if not recorded.
-    """
-    try:
-        with get_db() as conn:
-            cursor = conn.execute(
-                'SELECT end_time FROM game_end_times WHERE game_id = ?',
-                (game_id,)
-            )
-            row = cursor.fetchone()
-            if row:
-                return datetime.fromisoformat(row[0])
-            return None
-    except Exception as e:
-        print(f"[Cache] Warning in get_game_end_time: {e}", flush=True)
         return None
 
 

@@ -1,7 +1,6 @@
 import React, { memo } from 'react';
 import { Text } from 'ink';
 import type { Game, GameOdds } from '../services/apiClient.js';
-import type { HeatData } from '../hooks/useSocialHeat.js';
 import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { createGameMarker, type GameColor } from '../utils/mapRendering.js';
 import { findGameOdds } from '../services/apiClient.js';
@@ -19,7 +18,7 @@ interface MapLineProps {
 }
 
 function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisible, waveFrame = 0 }: MapLineProps) {
-    const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string; heat?: HeatData; isCrunchTime?: boolean }> = [];
+    const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string; isCrunchTime?: boolean }> = [];
 
     gameColors.forEach((pos, gameIdx) => {
         if (pos.row === rowIndex) {
@@ -28,7 +27,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
             const gameDate = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10) || '';
             const gameOdds = findGameOdds(odds, game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
 
-            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds, pos.heat, pos.isCrunchTime);
+            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds, pos.isCrunchTime);
             markersOnRow.push({
                 col: pos.col,
                 length: marker.length,
@@ -37,7 +36,6 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
                 isHighlighted: pos.isHighlighted,
                 gameIdx,
                 content: marker,
-                heat: pos.heat,
                 isCrunchTime: pos.isCrunchTime
             });
         }
@@ -145,12 +143,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
                 finalBg = bg;
                 finalColor = TEAM_TEXT_COLORS[teamCode] || '#ffffff';
                 finalBold = true;
-            } else if (marker.heat?.level === 'fire' || marker.heat?.level === 'hot') {
-                finalColor = marker.heat.level === 'fire' ? 'red' : 'orange';
-                finalBold = true;
-                if (marker.isSelected) {
-                    finalColor = 'cyan';
-                }
+
             } else if (marker.isCrunchTime) {
                 if (liveDotVisible) {
                     finalColor = 'white';
@@ -266,8 +259,7 @@ export const MapLine = memo(MapLineComponent, (prev, next) => {
                     prevColor.isLive !== nextColor.isLive ||
                     prevColor.isSelected !== nextColor.isSelected ||
                     prevColor.isHighlighted !== nextColor.isHighlighted ||
-                    prevColor.isCrunchTime !== nextColor.isCrunchTime ||
-                    prevColor.heat?.level !== nextColor.heat?.level) {
+                    prevColor.isCrunchTime !== nextColor.isCrunchTime) {
                     gameColorsChanged = true;
                     break;
                 }

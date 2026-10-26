@@ -11,7 +11,6 @@ import { getCleanMap, US_MAP_WIDTH } from './data/usMap.js';
 import { getTeamPosition } from './data/teamCoords.js';
 import { GameDetailPage } from './pages/GameDetailPage.js';
 import { StandingsSidebar } from './components/StandingsSidebar.js';
-import { HeatIndicator } from './components/HeatIndicator.js';
 
 import { findNearestGame } from './utils/mapNavigation.js';
 
@@ -21,7 +20,6 @@ import { MapLine } from './components/MapLine.js';
 import { GameDetail } from './components/GameDetail.js';
 import { Header, Footer } from './components/Layout.js';
 
-// Main App
 // Main App
 import { useGameStore } from './store/gameStore.js';
 
@@ -35,7 +33,6 @@ function App() {
     const connected = useGameStore(state => state.connected);
     const loading = useGameStore(state => state.loading);
     const odds = useGameStore(state => state.odds);
-    const socialHeat = useGameStore(state => state.socialHeat);
     const dataWarning = useGameStore(state => state.dataWarning);
 
     // Store Actions
@@ -200,8 +197,8 @@ function App() {
     const mapLines = useMemo(() => getCleanMap().slice(0, mapHeight), [mapHeight]);
 
     const { lines: mapWithGames, gameColors } = useMemo(() => embedGamesInMap(
-        mapLines, games, selectedIndex, Math.min(termWidth - 2, US_MAP_WIDTH), searchFilter, socialHeat
-    ), [mapLines, games, selectedIndex, termWidth, searchFilter, socialHeat]);
+        mapLines, games, selectedIndex, Math.min(termWidth - 2, US_MAP_WIDTH), searchFilter
+    ), [mapLines, games, selectedIndex, termWidth, searchFilter]);
 
     if (view === 'detail' && games[selectedIndex]) {
         return <GameDetailPage game={games[selectedIndex]} onBack={() => setView('map')} />;
@@ -307,9 +304,7 @@ function App() {
                             const game = games[selectedIndex];
                             const gameDate = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10) || '';
                             const gameOdds = findGameOdds(odds, game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
-                            // Pass heat to detail
-                            const gameHeat = socialHeat[game.gameId];
-                            return <GameDetail game={game} odds={gameOdds} currentIndex={selectedIndex} totalGames={games.length} heat={gameHeat} />;
+                            return <GameDetail game={game} odds={gameOdds} currentIndex={selectedIndex} totalGames={games.length} />;
                         })()
                     )}
                 </Box>

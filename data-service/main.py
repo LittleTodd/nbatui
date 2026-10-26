@@ -1,6 +1,6 @@
 """
 NBA-TUI Data Service
-FastAPI server providing NBA game data and social media heat metrics
+FastAPI server providing NBA game data
 """
 import os
 import sys
@@ -58,11 +58,8 @@ def _setup_logging():
 
 _setup_logging()
 
-from routers import games, social, polymarket
+from routers import games, polymarket
 from services import cache_service
-from workers.social_worker import SocialPrefetchWorker
-
-worker = SocialPrefetchWorker()
 
 
 def _preload_schedules():
@@ -77,19 +74,16 @@ async def lifespan(app: FastAPI):
     # Initialize cache database tables once at startup (BUG-11)
     cache_service.init_db()
 
-    # Start background worker and schedule preloading
-    worker.start()
+    # Start schedule preloading
     thread = threading.Thread(target=_preload_schedules, daemon=True)
     thread.start()
 
     yield
 
-    worker.stop()
-
 
 app = FastAPI(
     title="NBA-TUI Data Service",
-    description="Provides NBA game data and social heat metrics for the TUI",
+    description="Provides NBA game data for the TUI",
     version="0.1.0",
     lifespan=lifespan
 )
@@ -104,9 +98,7 @@ app.add_middleware(
 )
 
 # Include routers
-# Include routers
 app.include_router(games.router)
-app.include_router(social.router)
 app.include_router(polymarket.router)
 
 

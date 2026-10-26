@@ -42,7 +42,6 @@
 - 按节得分表 (Scoring by Quarter)
 - 球队数据对比 (Team Stats Comparison)
 - Top 10 球员表现 (Top 10 Performers)
-- Reddit r/nba 热门评论 (Social Buzz from r/nba)
 
 ### 球队中心 | Team Hub
 - 完整阵容名单与球员数据
@@ -55,8 +54,6 @@
 ### 数据源 | Data Sources
 - NBA 官方 API (实时比分、球员统计)
 - NBA Official API (live scores, player stats)
-- Reddit r/nba (社交热度、评论)
-- Reddit r/nba (social heat, comments)
 - Polymarket (预测市场赔率)
 - Polymarket (prediction market odds)
 
@@ -117,7 +114,7 @@ cd nbatui
 | 前端 Frontend | React + Ink, Zustand, Bun |
 | 后端 Backend | Python FastAPI |
 | 缓存 Cache | SQLite |
-| 数据 Data | nba_api, Reddit API |
+| 数据 Data | nba_api |
 
 ---
 
@@ -132,7 +129,7 @@ nba-tui/
 │   └── services/           # API 客户端
 ├── data-service/           # Python 后端
 │   ├── main.py             # FastAPI 入口
-│   ├── services/           # NBA/Reddit 服务
+│   ├── services/           # NBA 服务
 │   ├── routers/            # API 路由
 │   └── cache.db            # SQLite 缓存
 ├── setup.sh                # 安装脚本
@@ -145,8 +142,6 @@ nba-tui/
 
 - 已结束比赛的 boxscore 永久缓存
 - Completed game boxscores are cached permanently
-- Social 数据在比赛结束 2 小时后缓存
-- Social data cached 2 hours after game ends
 - 进行中比赛使用 Live API 获取实时比分
 - Live games use Live API for real-time scores
 

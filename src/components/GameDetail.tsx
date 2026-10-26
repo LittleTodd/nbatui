@@ -2,17 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { getGameStatusInfo, type Game, type GameOdds } from '../services/apiClient.js';
-import { HeatIndicator } from './HeatIndicator.js';
 import { WinProbabilityBar } from './WinProbabilityBar.js';
 import { TEAM_BG_COLORS } from '../data/teamColors.js';
-import { type HeatData } from '../hooks/useSocialHeat.js';
 
 interface GameDetailProps {
     game: Game;
     odds?: GameOdds;
     currentIndex: number;
     totalGames: number;
-    heat?: HeatData;
 }
 
 /**
@@ -42,7 +39,7 @@ function getGameTypeLabel(gameTimeUTC: string): { label: string; color: string }
 }
 
 // Selected game detail panel
-export function GameDetail({ game, odds, currentIndex, totalGames, heat }: GameDetailProps) {
+export function GameDetail({ game, odds, currentIndex, totalGames }: GameDetailProps) {
     const { text: statusText, isLive, isFinal } = getGameStatusInfo(game);
     const isFuture = game.gameStatus === 1;
 
@@ -59,10 +56,8 @@ export function GameDetail({ game, odds, currentIndex, totalGames, heat }: GameD
     // Game type label
     const { label: gameTypeLabel, color: gameTypeColor } = getGameTypeLabel(game.gameTimeUTC);
 
-    // Border color: use home team color, but heat overrides
-    let borderColor = TEAM_BG_COLORS[game.homeTeam.teamTricode] || 'cyan';
-    if (heat?.level === 'fire') borderColor = 'red';
-    else if (heat?.level === 'hot') borderColor = 'orange';
+    // Border color: use home team color
+    const borderColor = TEAM_BG_COLORS[game.homeTeam.teamTricode] || 'cyan';
 
 
     return (
@@ -97,13 +92,6 @@ export function GameDetail({ game, odds, currentIndex, totalGames, heat }: GameD
                     </Text>
                     <Text bold>{game.homeTeam.teamTricode}</Text>
                 </Box>
-
-                {/* Social Heat Indicator */}
-                {heat && heat.level !== 'cold' && (
-                    <Box marginTop={0}>
-                        <HeatIndicator level={heat.level} count={heat.count} />
-                    </Box>
-                )}
 
                 {/* Win Probability Bar for future games */}
                 {isFuture && odds && odds.homeProb > 0 && (

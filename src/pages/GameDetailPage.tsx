@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, findGameOdds, getGameStatusInfo, type GameOdds, fetchGameHeat, fetchGameTweets, type SocialHeat, type Tweet, fetchPlayByPlay, type PlayByPlayAction } from '../services/apiClient.js';
+import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, findGameOdds, getGameStatusInfo, type GameOdds, fetchPlayByPlay, type PlayByPlayAction } from '../services/apiClient.js';
 import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
-import { HeatIndicator } from '../components/HeatIndicator.js';
 import { PlayByPlayStream } from '../components/PlayByPlayStream.js';
 import { LiveOnCourt } from '../components/LiveOnCourt.js';
 import { OddsCurve } from '../components/OddsCurve.js';
@@ -32,13 +31,8 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     const [standings, setStandings] = useState<TeamStanding[]>([]);
     const [odds, setOdds] = useState<GameOdds | null>(null);
     const [loading, setLoading] = useState(true);
-    const [socialHeat, setSocialHeat] = useState<SocialHeat | null>(null);
-    const [tweets, setTweets] = useState<Tweet[]>([]);
     const [playByPlay, setPlayByPlay] = useState<PlayByPlayAction[]>([]);
-    // Live games (status=2) default to Play-by-Play, completed games (status=3) default to Social Buzz
-    const [activeTab, setActiveTab] = useState<'playbyplay' | 'social'>(
-        game.gameStatus === 2 ? 'playbyplay' : 'social'
-    );
+    const [activeTab, setActiveTab] = useState<'playbyplay'>('playbyplay');
 
     // Focus state: 'stream' for play-by-play scrolling, 'oncourt' for player selection
     const [focusMode, setFocusMode] = useState<'stream' | 'oncourt'>('stream');
@@ -62,40 +56,12 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     }, []);
 
     // Initial Data Fetch & Polling Loop
-    // Initial Data Fetch (Social, Odds, Standings) - Run ONCE on mount/gameId change
+    // Initial Data Fetch (Odds, Standings) - Run ONCE on mount/gameId change
     useEffect(() => {
         let mounted = true;
         setLoading(true);
 
         const fetchStaticData = async () => {
-            // Fetch Social Data (Parallel)
-            const team1 = game.awayTeam.teamName;
-            const team2 = game.homeTeam.teamName;
-            const gameDateStr = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10);
-
-            let skipSocial = false;
-            if (gameDateStr) {
-                const gDate = new Date(gameDateStr);
-                const sixMonths = new Date();
-                sixMonths.setMonth(sixMonths.getMonth() - 6);
-                if (gDate < sixMonths) skipSocial = true;
-            }
-
-            // Fetch Social for non-scheduled games (scheduled handled below/separately? No, common logc)
-            // Actually, let's just do it for all valid games
-            // But strict requirement: "Skip social data for scheduled games (status=1) - no Reddit thread exists"
-            if (!skipSocial && game.gameStatus !== 1) {
-                Promise.all([
-                    fetchGameHeat(team1, team2, game.gameStatus, gameDateStr, game.gameId),
-                    fetchGameTweets(team1, team2, game.gameStatus, gameDateStr, game.gameId)
-                ]).then(([heatData, tweetsData]) => {
-                    if (mounted) {
-                        setSocialHeat(heatData);
-                        setTweets(tweetsData);
-                    }
-                });
-            }
-
             if (isScheduled) {
                 const [standingsData, oddsData] = await Promise.all([
                     fetchStandings(),
@@ -222,12 +188,9 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
             setFocusMode(prev => prev === 'stream' ? 'oncourt' : 'stream');
             return;
         }
-        // Tab switching: P for Play-by-Play, S for Social
+        // Tab switching: P for Play-by-Play
         if (input === 'p' || input === 'P') {
             setActiveTab('playbyplay');
-        }
-        if (input === 's' || input === 'S') {
-            setActiveTab('social');
         }
     });
 
@@ -241,7 +204,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
     // Scheduled game: show Game Preview
     if (isScheduled) {
-        return <GamePreview game={game} standings={standings} odds={odds} socialHeat={socialHeat} />;
+        return <GamePreview game={game} standings={standings} odds={odds} />;
     }
 
     // Live/completed game: show boxscore
@@ -306,7 +269,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 />
             </Box>
 
-            {/* Tab-switchable Bottom Panel */}
+            {/* Play-by-Play Bottom Panel */}
             <Box flexDirection="column" marginTop={1} paddingX={1} borderStyle="round" borderColor="gray">
 
                 {/* Tab Header */}
@@ -324,47 +287,20 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                             '📜 Play-by-Play'
                         )}
                     </Text>
-                    <Text>  </Text>
-                    <Text
-                        bold={activeTab === 'social'}
-                        color={activeTab === 'social' ? '#ffcc00' : 'gray'}
-                    >
-                        [S] 💬 Social Buzz
-                    </Text>
-                    {socialHeat && socialHeat.level !== 'cold' && (
-                        <Box marginLeft={1}>
-                            <HeatIndicator level={socialHeat.level} count={socialHeat.count} />
-                        </Box>
-                    )}
                 </Box>
 
                 {/* Tab Content */}
-                {activeTab === 'playbyplay' ? (
-                    <PlayByPlayStream
-                        actions={playByPlay}
-                        homeTricode={game.homeTeam.teamTricode}
-                        awayTricode={game.awayTeam.teamTricode}
-                        homeName={game.homeTeam.teamName}
-                        awayName={game.awayTeam.teamName}
-                        homeScore={game.homeTeam.score}
-                        awayScore={game.awayTeam.score}
-                        isLive={game.gameStatus === 2}
-                        gameStatusText={boxScore?.gameStatusText || game.gameStatusText}
-                    />
-                ) : (
-                    <Box flexDirection="column">
-                        {tweets.length > 0 ? (
-                            tweets.slice(0, 3).map((t, i) => (
-                                <Box key={i} flexDirection="column" marginBottom={1}>
-                                    <Text dimColor>{t.user.startsWith('u/') ? t.user : `u/${t.user}`} <Text color="green">^ {t.likes}</Text></Text>
-                                    <Text italic color="white">"{t.text}"</Text>
-                                </Box>
-                            ))
-                        ) : (
-                            <Text dimColor>No social buzz data available.</Text>
-                        )}
-                    </Box>
-                )}
+                <PlayByPlayStream
+                    actions={playByPlay}
+                    homeTricode={game.homeTeam.teamTricode}
+                    awayTricode={game.awayTeam.teamTricode}
+                    homeName={game.homeTeam.teamName}
+                    awayName={game.awayTeam.teamName}
+                    homeScore={game.homeTeam.score}
+                    awayScore={game.awayTeam.score}
+                    isLive={game.gameStatus === 2}
+                    gameStatusText={boxScore?.gameStatusText || game.gameStatusText}
+                />
             </Box>
 
 
@@ -377,8 +313,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 }
 
 // Game Preview component for scheduled games
-// Game Preview component for scheduled games
-function GamePreview({ game, standings, odds, socialHeat }: { game: Game; standings: TeamStanding[]; odds: GameOdds | null; socialHeat: SocialHeat | null }) {
+function GamePreview({ game, standings, odds }: { game: Game; standings: TeamStanding[]; odds: GameOdds | null }) {
     const { text: gameTime } = getGameStatusInfo(game);
     const CONTENT_WIDTH = 60; // Slightly narrower for better fit
 
@@ -397,9 +332,6 @@ function GamePreview({ game, standings, odds, socialHeat }: { game: Game; standi
             {/* Header */}
             <Box flexDirection="column" alignItems="center" marginBottom={1}>
                 <Text bold color="cyan">🏀 GAME PREVIEW</Text>
-                {socialHeat && socialHeat.level !== 'cold' && (
-                    <HeatIndicator level={socialHeat.level} count={socialHeat.count} />
-                )}
             </Box>
 
             {/* Matchup */}

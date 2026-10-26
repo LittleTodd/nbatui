@@ -1,4 +1,4 @@
 """Routers package"""
-from . import games, social
+from . import games
 
-__all__ = ["games", "social"]
+__all__ = ["games"]
