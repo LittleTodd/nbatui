@@ -44,7 +44,17 @@ cd ..
 
 # 4. Start Loading Animation Loop + Background Data Prefetch
 # We loop until data service is ready AND data is prefetched
+# Give up after ~30s so a broken backend does not hang the launcher forever
+WAIT_ROUNDS=0
+MAX_WAIT_ROUNDS=60
 while true; do
+    WAIT_ROUNDS=$((WAIT_ROUNDS + 1))
+    if [ "$WAIT_ROUNDS" -gt "$MAX_WAIT_ROUNDS" ]; then
+        echo -e "${YELLOW}Data service did not become ready within 30 seconds.${NC}"
+        echo -e "${YELLOW}Check the backend manually: cd data-service && python main.py${NC}"
+        kill $DATA_SERVICE_PID 2>/dev/null || true
+        exit 1
+    fi
     # Check if backend is ready first
     if curl -s http://localhost:8765/health > /dev/null 2>&1; then
         # Backend is up! Start prefetching data in background
@@ -87,6 +97,6 @@ trap cleanup SIGINT SIGTERM
 
 echo -e "${GREEN}✅ Ready! Starting TUI...${NC}"
 sleep 0.5
-bun run start 2>/dev/null
+bun run start
 
 cleanup
