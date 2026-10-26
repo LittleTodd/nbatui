@@ -270,10 +270,11 @@ class NBAService:
 
             year, month, day = map(int, et_date.split("-"))
             season_start_year = year if month >= 10 else year - 1
+            season_str = f"{season_start_year}-{str(season_start_year + 1)[-2:]}"
             log_date = f"{month:02d}/{day:02d}/{year}"
 
             log = leaguegamelog.LeagueGameLog(
-                season=season_start_year,
+                season=season_str,
                 date_from_nullable=log_date,
                 date_to_nullable=log_date,
             )
@@ -650,12 +651,13 @@ class NBAService:
             # Use leaguegamelog which provides PLUS_MINUS
             from nba_api.stats.endpoints import leaguegamelog
             
-            # Determine season
+            # Determine season string (e.g. '2025-26')
             from datetime import datetime
             now = datetime.now()
-            season_year = now.year if now.month >= 10 else now.year - 1
-            
-            gamelog = leaguegamelog.LeagueGameLog(season=season_year)
+            season_start_year = now.year if now.month >= 10 else now.year - 1
+            season_str = f"{season_start_year}-{str(season_start_year + 1)[-2:]}"
+
+            gamelog = leaguegamelog.LeagueGameLog(season=season_str)
             log_data = gamelog.get_dict()
             
             games = []
