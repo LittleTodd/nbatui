@@ -16,6 +16,7 @@ import { findNearestGame } from './utils/mapNavigation.js';
 
 import { embedGamesInMap } from './utils/mapRendering.js';
 import { MapLine } from './components/MapLine.js';
+import { ClutchTicker, evaluateGameClutch } from './components/ClutchTicker.js';
 
 import { GameDetail } from './components/GameDetail.js';
 import { Header, Footer } from './components/Layout.js';
@@ -145,6 +146,31 @@ function App() {
             return;
         }
 
+        if (input === 'z' || input === 'Z') {
+            // Find highest leverage live game
+            let bestIdx = -1;
+            let bestLeverage = -1;
+            games.forEach((g, idx) => {
+                const evalClutch = evaluateGameClutch(g, idx);
+                if (evalClutch.leverageScore > bestLeverage) {
+                    bestLeverage = evalClutch.leverageScore;
+                    bestIdx = idx;
+                }
+            });
+            if (bestIdx !== -1 && bestLeverage > 0) {
+                setSelectedIndex(bestIdx);
+                setView('detail');
+                return;
+            } else if (games.length > 0) {
+                const firstLive = games.findIndex(g => g.gameStatus === 2);
+                if (firstLive !== -1) {
+                    setSelectedIndex(firstLive);
+                    setView('detail');
+                    return;
+                }
+            }
+        }
+
         if (key.return) {
             if (games.length > 0 && !showStandings) {
                 setView('detail');
@@ -155,43 +181,54 @@ function App() {
         // Skip map navigation when standings sidebar is visible
         if (showStandings) return;
 
-        if (key.upArrow) {
-            moveSelection('up');
-        }
-
-        if (key.downArrow) {
-            moveSelection('down');
-        }
-
-        if (key.leftArrow) {
+        // Date Switching: [ / ] or PageUp/PageDown or , / . or t for today
+        if (input === '[' || key.pageUp || input === ',') {
             changeDate('prev');
+            return;
         }
 
-        if (key.rightArrow) {
+        if (input === ']' || key.pageDown || input === '.') {
             changeDate('next');
+            return;
+        }
+
+        if (input === 't' || input === 'T') {
+            loadGamesForDate(new Date());
+            return;
+        }
+
+        // 2D Map Navigation: Arrows & Vim keys (h/j/k/l)
+        if (key.upArrow || input === 'k') {
+            moveSelection('up');
+            return;
+        }
+
+        if (key.downArrow || input === 'j') {
+            moveSelection('down');
+            return;
+        }
+
+        if (key.leftArrow || input === 'h') {
+            moveSelection('left');
+            return;
+        }
+
+        if (key.rightArrow || input === 'l') {
+            moveSelection('right');
+            return;
         }
     });
 
     const termWidth = process.stdout.columns || 100;
     const termHeight = process.stdout.rows || 40;
 
-    const minMapWidth = 100;
-    const minFullWidth = 165;
-    const minHeight = 40;
+    const minMapWidth = 80;
+    const minHeight = 24;
 
     const isMapCramped = termWidth < minMapWidth || termHeight < minHeight;
-    const isSidebarCramped = showStandings && termWidth < minFullWidth;
+    const warningHeight = isMapCramped ? 3 : 0;
 
-    let warningHeight = 0;
-    if (isMapCramped || isSidebarCramped) {
-        warningHeight += 2;
-        warningHeight += 1;
-        if (isMapCramped) warningHeight += 1;
-        if (isSidebarCramped) warningHeight += 1;
-        warningHeight += 1;
-    }
-
-    const nonMapHeight = 18 + warningHeight;
+    const nonMapHeight = 16 + warningHeight;
     const availableHeight = Math.max(0, termHeight - nonMapHeight);
     const mapHeight = Math.max(0, Math.min(availableHeight, 25));
     const mapLines = useMemo(() => getCleanMap().slice(0, mapHeight), [mapHeight]);
@@ -208,109 +245,117 @@ function App() {
 
     return (
         <Box flexDirection="column">
-            {(isMapCramped || isSidebarCramped) && (
-                <Box borderStyle="double" borderColor="red" flexDirection="column" alignItems="center" marginBottom={1}>
-                    <Text color="red" bold>⚠️  Resolution Warning</Text>
-                    {isMapCramped && <Text>Map requires {minMapWidth}x{minHeight} (Current: {termWidth}x{termHeight})</Text>}
-                    {isSidebarCramped && <Text>Sidebar requires width {minFullWidth} (Current: {termWidth})</Text>}
+            {isMapCramped && (
+                <Box borderStyle="single" borderColor="yellow" flexDirection="column" alignItems="center" marginBottom={1}>
+                    <Text color="yellow" bold>⚠️  Small Terminal Warning</Text>
+                    <Text dimColor>Recommended at least 80x24 (Current: {termWidth}x{termHeight})</Text>
                 </Box>
             )}
 
             {/* Header */}
             <Header dateDisplay={dateDisplay} />
 
-            <Box flexDirection="row" justifyContent="center" marginTop={1}>
-                {/* ... Main Content ... */}
-                <Box flexDirection="column" alignItems="center">
-                    {/* Initial Loading State - Show loading animation */}
-                    {loading && games.length === 0 ? (
-                        <Box
-                            flexDirection="column"
-                            alignItems="center"
-                            justifyContent="center"
-                            height={Math.max(8, mapHeight)}
-                            borderStyle="round"
-                            borderColor="cyan"
-                            paddingX={6}
-                            paddingY={1}
-                        >
-                            <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
-                            <Box marginTop={1}>
-                                <BasketballSpinner />
-                                <Text color="yellow"> Loading game data...</Text>
-                            </Box>
-                            <Box marginTop={0}>
-                                <Text dimColor>Fetching today's NBA schedule</Text>
-                            </Box>
-                        </Box>
-                    ) : games.length === 0 && !loading ? (
-                        /* No Games State - Only show when loading is complete */
-                        <Box
-                            flexDirection="column"
-                            alignItems="center"
-                            justifyContent="center"
-                            height={Math.max(8, mapHeight)}
-                            borderStyle="round"
-                            borderColor="gray"
-                            paddingX={4}
-                            paddingY={1}
-                        >
-                            <Text bold color="yellow">🏀 No Games Scheduled 🏀</Text>
-                            <Box marginTop={1}>
-                                <Text dimColor>No NBA games found for this date.</Text>
-                            </Box>
-                            <Box marginTop={1}>
-                                <Text dimColor>Use </Text>
-                                <Text color="cyan" bold>← →</Text>
-                                <Text dimColor> to browse other dates</Text>
-                            </Box>
-                        </Box>
-                    ) : (
-                        /* Map View - Show when we have games */
-                        mapWithGames.map((line, rowIdx) => (
-                            <MapLine
-                                key={rowIdx}
-                                line={line}
-                                rowIndex={rowIdx}
-                                gameColors={gameColors}
-                                games={games}
-                                odds={odds}
-                                liveDotVisible={liveDotVisible}
-                                waveFrame={waveFrame}
-                            />
-                        ))
-                    )}
+            {/* Live Clutch & Heartbeat Ticker */}
+            <ClutchTicker games={games} />
 
-
-                    {isSearching ? (
-                        <Box flexDirection="column" marginTop={1} alignSelf="center">
-                            <Box
-                                borderStyle="round"
-                                borderColor="yellow"
-                                paddingX={2}
-                                width={40}
-                                flexDirection="row"
-                            >
-                                <Text>Search: </Text>
-                                <Text color="white">{searchFilter}</Text>
-                                <Text color="yellow">█</Text>
-                            </Box>
-                            <Box justifyContent="center" marginTop={0}>
-                                <Text dimColor>Enter to select • Esc to cancel</Text>
-                            </Box>
-                        </Box>
-                    ) : (
-                        games.length > 0 && games[selectedIndex] && (() => {
-                            const game = games[selectedIndex];
-                            const gameDate = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10) || '';
-                            const gameOdds = findGameOdds(odds, game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
-                            return <GameDetail game={game} odds={gameOdds} currentIndex={selectedIndex} totalGames={games.length} />;
-                        })()
-                    )}
+            {showStandings ? (
+                <Box flexDirection="column" alignItems="center" marginTop={1}>
+                    <StandingsSidebar visible={showStandings} onClose={() => setShowStandings(false)} />
                 </Box>
+            ) : (
+                <Box flexDirection="row" justifyContent="center" marginTop={1}>
+                    {/* ... Main Content ... */}
+                    <Box flexDirection="column" alignItems="center">
+                        {/* Initial Loading State - Show loading animation */}
+                        {loading && games.length === 0 ? (
+                            <Box
+                                flexDirection="column"
+                                alignItems="center"
+                                justifyContent="center"
+                                height={Math.max(8, mapHeight)}
+                                borderStyle="round"
+                                borderColor="cyan"
+                                paddingX={6}
+                                paddingY={1}
+                            >
+                                <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
+                                <Box marginTop={1}>
+                                    <BasketballSpinner />
+                                    <Text color="yellow"> Loading game data...</Text>
+                                </Box>
+                                <Box marginTop={0}>
+                                    <Text dimColor>Fetching today's NBA schedule</Text>
+                                </Box>
+                            </Box>
+                        ) : games.length === 0 && !loading ? (
+                            /* No Games State - Only show when loading is complete */
+                            <Box
+                                flexDirection="column"
+                                alignItems="center"
+                                justifyContent="center"
+                                height={Math.max(8, mapHeight)}
+                                borderStyle="round"
+                                borderColor="gray"
+                                paddingX={4}
+                                paddingY={1}
+                            >
+                                <Text bold color="yellow">🏀 No Games Scheduled 🏀</Text>
+                                <Box marginTop={1}>
+                                    <Text dimColor>No NBA games found for this date.</Text>
+                                </Box>
+                                <Box marginTop={1}>
+                                    <Text dimColor>Use </Text>
+                                    <Text color="cyan" bold>[ / ]</Text>
+                                    <Text dimColor> to browse other dates</Text>
+                                </Box>
+                            </Box>
+                        ) : (
+                            /* Map View - Show when we have games */
+                            mapWithGames.map((line, rowIdx) => (
+                                <MapLine
+                                    key={rowIdx}
+                                    line={line}
+                                    rowIndex={rowIdx}
+                                    gameColors={gameColors}
+                                    games={games}
+                                    odds={odds}
+                                    liveDotVisible={liveDotVisible}
+                                    waveFrame={waveFrame}
+                                />
+                            ))
+                        )}
 
-                <StandingsSidebar visible={showStandings} onClose={() => setShowStandings(false)} />
-            </Box>
+                        {isSearching ? (
+                            <Box flexDirection="column" marginTop={1} alignSelf="center">
+                                <Box
+                                    borderStyle="round"
+                                    borderColor="yellow"
+                                    paddingX={2}
+                                    width={45}
+                                    flexDirection="row"
+                                    justifyContent="space-between"
+                                >
+                                    <Box>
+                                        <Text>Search: </Text>
+                                        <Text color="white">{searchFilter}</Text>
+                                        <Text color="yellow">█</Text>
+                                    </Box>
+                                </Box>
+                                <Box justifyContent="center" marginTop={0}>
+                                    <Text dimColor>Enter to select • Esc to cancel</Text>
+                                </Box>
+                            </Box>
+                        ) : (
+                            games.length > 0 && games[selectedIndex] && (() => {
+                                const game = games[selectedIndex];
+                                const gameDate = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10) || '';
+                                const gameOdds = findGameOdds(odds, game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
+                                return <GameDetail game={game} odds={gameOdds} currentIndex={selectedIndex} totalGames={games.length} />;
+                            })()
+                        )}
+                    </Box>
+                </Box>
+            )}
 
             {/* Footer */}
             <Footer

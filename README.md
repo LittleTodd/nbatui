@@ -95,15 +95,20 @@ cd nbatui
 
 | 按键 Key | 功能 Action |
 |----------|-------------|
-| `← / →` | 切换日期/标签 Change date/tab |
-| `↑ / ↓` | 选择比赛/滚动 Select/Scroll |
-| `Enter` | 查看详情 View detail |
-| `Tab` | 切换视图/页面 Switch View/Tab |
-| `1 / 2 / 3` | 详情页标签 Quick Tabs |
-| `/` | 搜索球队 Search team |
-| `s` | 切换积分榜 Toggle standings |
-| `r` | 刷新数据 Refresh |
-| `q / Esc` | 退出 Quit |
+| `← / → / ↑ / ↓` or `h/j/k/l` | 2D 空间地图导航 (True 2D Map Navigation) |
+| `[ / ]` or `, / .` | 切换日期 (Change Date) (`t` 回到今天) |
+| `z / Z` | 决胜时刻模式 (NBA RedZone / Clutch Mode Auto-Hop) |
+| `Enter` | 查看详情 / 选择球员 (View Detail / Focus) |
+| `1 / 2 / 3 / 4` or `Tab` | 详情页工作区 (1:BoxScore, 2:Lineups, 3:PBP, 4:LeadTracker) |
+| `c` | 盲文半场投篮图 (BrailleCourt™ Shot Chart & Heatmap) |
+| `d` | 巨星对决格斗面板 (Superstar Duel Showdown HUD) |
+| `v` | 复古街机球星卡 (ASCII Holographic Trading Card) |
+| `y` | 复制球星卡到系统剪贴板 (OSC 52 Clipboard Export) |
+| `s` | 切换积分榜抽屉 / 文字流仅看得分 (Toggle Standings / Scoring Filter) |
+| `f` | 文字流仅看犯规失误 (Filter Fouls / Turnovers in PBP) |
+| `/` | 搜索球队 (Search Team) |
+| `r` | 刷新数据 (Refresh) |
+| `q / Esc` | 返回/退出 (Back / Quit) |
 
 ---
 

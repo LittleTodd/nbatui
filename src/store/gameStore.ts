@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { type Game, type GameOdds, fetchGamesByDate, checkHealth, fetchPolymarketOdds, consumeApiDiagnostics, type ApiClientDiagnostic } from '../services/apiClient.js';
 import { format, subDays, isSameDay } from 'date-fns';
 import { getTeamPosition } from '../data/teamCoords.js';
+import { findNearestGame } from '../utils/mapNavigation.js';
 
 interface GameState {
     games: Game[];
@@ -24,7 +25,7 @@ interface GameState {
     checkConnection: () => Promise<void>;
     loadGamesForDate: (date: Date, isBackgroundRefresh?: boolean) => Promise<void>;
     refreshGames: () => Promise<void>;
-    moveSelection: (direction: 'up' | 'down') => void;
+    moveSelection: (direction: 'up' | 'down' | 'left' | 'right') => void;
     changeDate: (direction: 'prev' | 'next') => void;
 }
 
@@ -169,32 +170,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     moveSelection: (direction) => {
         const { selectedIndex, games } = get();
         if (games.length === 0) return;
-
-        // Sort games by Y coordinate (top to bottom on map)
-        // Using homeTeam's position as the reference
-        const sortedByY = [...games].map((game, originalIndex) => ({
-            game,
-            originalIndex,
-            y: getTeamPosition(game.homeTeam.teamTricode).y
-        })).sort((a, b) => a.y - b.y);
-
-        // Find current game's position in the sorted list
-        const currentSortedIndex = sortedByY.findIndex(g => g.originalIndex === selectedIndex);
-
-        let newSortedIndex: number;
-        if (direction === 'up') {
-            // Move to game higher on map (lower Y value)
-            newSortedIndex = currentSortedIndex > 0 ? currentSortedIndex - 1 : sortedByY.length - 1;
-        } else {
-            // Move to game lower on map (higher Y value)
-            newSortedIndex = currentSortedIndex < sortedByY.length - 1 ? currentSortedIndex + 1 : 0;
-        }
-
-        // Set the new selected index using the original array index
-        const newGame = sortedByY[newSortedIndex];
-        if (newGame) {
-            set({ selectedIndex: newGame.originalIndex });
-        }
+        const nextIndex = findNearestGame(games, selectedIndex, direction);
+        set({ selectedIndex: nextIndex });
     },
 
     changeDate: (direction) => {

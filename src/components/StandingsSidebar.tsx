@@ -135,7 +135,7 @@ export const StandingsSidebar = ({ visible, onClose }: StandingsSidebarProps) =>
     // When modal is shown, render ONLY the modal (not overlapped with standings)
     if (showModal) {
         return (
-            <Box flexDirection="column" marginLeft={1}>
+            <Box flexDirection="column" alignItems="center">
                 <TeamDetailModal
                     team={selectedTeam}
                     visible={showModal}
@@ -148,12 +148,15 @@ export const StandingsSidebar = ({ visible, onClose }: StandingsSidebarProps) =>
         );
     }
 
-    // Main standings view (only when modal is NOT shown)
+    // Main standings view (centered overlay drawer)
     return (
-        <Box flexDirection="column" marginLeft={1}>
-            <Box borderStyle="single" flexDirection="column" paddingX={1}>
-                <Text bold underline>Standings</Text>
-                <Text dimColor>↑↓ select • ←→ switch • Enter view</Text>
+        <Box flexDirection="column" alignItems="center" marginTop={1}>
+            <Box borderStyle="round" borderColor="cyan" flexDirection="column" paddingX={2} paddingY={0}>
+                <Box justifyContent="space-between" width={66} marginBottom={1}>
+                    <Text bold color="cyan">🏀 NBA STANDINGS & PLAYOFF RACE</Text>
+                    <Text dimColor>Esc / s to close</Text>
+                </Box>
+                <Text dimColor>↑↓ select team • ←→ / Tab switch conf • Enter team hub</Text>
 
                 <Box flexDirection="row" gap={4} marginTop={1}>
                     {/* East */}
@@ -199,16 +202,16 @@ export const StandingsSidebar = ({ visible, onClose }: StandingsSidebarProps) =>
                     </Box>
                 </Box>
 
-                <Box marginTop={1}>
-                    <Text dimColor>1-6:Playoff 7-10:Play-in</Text>
+                <Box marginTop={1} justifyContent="space-between" width={66}>
+                    <Text dimColor>1-6: Playoff   7-10: Play-in   11-15: Lottery</Text>
+                    <Text color="yellow">Polymarket Odds ↓</Text>
                 </Box>
 
                 <Box marginTop={1} borderStyle="single" borderTop={false} borderLeft={false} borderRight={false} borderBottom={true} borderColor="gray" />
 
                 {/* Polymarket Predictions */}
                 <Box marginTop={1} flexDirection="column">
-                    <Text dimColor>Polymarket Predictions</Text>
-                    <Box flexDirection="row" gap={4} marginTop={1}>
+                    <Box flexDirection="row" gap={4}>
                         <Box flexDirection="column">
                             {renderPropTable("NBA Champion", props['championship'])}
                             {renderPropTable("Rookie of Year", props['rookie_of_year'])}

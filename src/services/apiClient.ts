@@ -359,11 +359,19 @@ export interface PlayByPlayAction {
     periodType: string;
     description: string;
     teamTricode?: string;
+    personId?: number;
+    playerName?: string;
     playerNameI?: string;
     scoreHome: string;
     scoreAway: string;
     actionType: string;
+    subType?: string;
     shotResult?: string;
+    isFieldGoal?: number | boolean;
+    shotDistance?: number;
+    x?: number;
+    y?: number;
+    pointsTotal?: number;
 }
 
 export interface PlayByPlayResponse {

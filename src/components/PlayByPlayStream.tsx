@@ -11,19 +11,8 @@ import { Box, Text, useInput } from 'ink';
 import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { AnimatedText, type AnimationType } from './ui/AnimatedText.js';
 
-export interface PlayByPlayAction {
-    actionNumber: number;
-    clock: string;
-    period: number;
-    periodType: string;
-    description: string;
-    teamTricode?: string;
-    playerNameI?: string;
-    scoreHome: string;
-    scoreAway: string;
-    actionType: string;
-    shotResult?: string;
-}
+import { type PlayByPlayAction } from '../services/apiClient.js';
+export type { PlayByPlayAction };
 
 interface DisplayAction {
     id: string;
@@ -52,6 +41,7 @@ interface PlayByPlayStreamProps {
     isLive?: boolean;
     maxItems?: number;
     gameStatusText?: string;
+    isActive?: boolean;
 }
 
 // Victory message templates - randomly selected
@@ -202,12 +192,14 @@ export function PlayByPlayStream({
     awayScore,
     isLive = false,
     maxItems = 10,
-    gameStatusText = ''
+    gameStatusText = '',
+    isActive = true
 }: PlayByPlayStreamProps) {
     const [scrollOffset, setScrollOffset] = useState(0);
+    const [filterMode, setFilterMode] = useState<'all' | 'scoring' | 'fouls'>('all');
 
     const displayActions = useMemo(() => {
-        const filtered = actions.filter(a =>
+        let filtered = actions.filter(a =>
             a.description &&
             !a.description.includes('Period Start') &&
             !a.description.includes('Period End') &&
@@ -216,8 +208,15 @@ export function PlayByPlayStream({
             a.actionType !== 'period' &&
             a.actionType !== 'game'
         );
+
+        if (filterMode === 'scoring') {
+            filtered = filtered.filter(a => a.shotResult === 'Made' || a.actionType === 'freethrow' && a.description.includes('PTS'));
+        } else if (filterMode === 'fouls') {
+            filtered = filtered.filter(a => a.actionType === 'foul' || a.actionType === 'turnover' || a.description.toLowerCase().includes('foul') || a.description.toLowerCase().includes('turnover'));
+        }
+
         return consolidateActions(filtered);
-    }, [actions]);
+    }, [actions, filterMode]);
 
     const finalResultMsg = useMemo(() => {
         if (isLive) return '';
@@ -241,8 +240,38 @@ export function PlayByPlayStream({
     }, [isLive, homeScore, awayScore, homeName, homeTricode, awayName, awayTricode]);
 
     useInput((input, key) => {
-        if (key.upArrow) setScrollOffset(prev => Math.max(0, prev - 1));
-        if (key.downArrow) setScrollOffset(prev => Math.min(Math.max(0, displayActions.length - maxItems), prev + 1));
+        if (!isActive) return;
+
+        if (key.upArrow || input === 'k') {
+            setScrollOffset(prev => Math.max(0, prev - 1));
+        }
+        if (key.downArrow || input === 'j') {
+            setScrollOffset(prev => Math.min(Math.max(0, displayActions.length - maxItems), prev + 1));
+        }
+        if (key.pageUp || input === 'u') {
+            setScrollOffset(prev => Math.max(0, prev - maxItems));
+        }
+        if (key.pageDown || input === 'd') {
+            setScrollOffset(prev => Math.min(Math.max(0, displayActions.length - maxItems), prev + maxItems));
+        }
+        if (input === 'g') {
+            setScrollOffset(0);
+        }
+        if (input === 'G') {
+            setScrollOffset(Math.max(0, displayActions.length - maxItems));
+        }
+        if (input === 's') {
+            setFilterMode(prev => prev === 'scoring' ? 'all' : 'scoring');
+            setScrollOffset(0);
+        }
+        if (input === 'f') {
+            setFilterMode(prev => prev === 'fouls' ? 'all' : 'fouls');
+            setScrollOffset(0);
+        }
+        if (input === 'a') {
+            setFilterMode('all');
+            setScrollOffset(0);
+        }
     });
 
     const visibleActions = displayActions.slice(scrollOffset, scrollOffset + maxItems);
@@ -260,8 +289,20 @@ export function PlayByPlayStream({
 
     return (
         <Box flexDirection="column">
-            {/* Header */}
-
+            {/* Filter Bar */}
+            <Box justifyContent="space-between" marginBottom={0}>
+                <Box>
+                    <Text dimColor>Filter: </Text>
+                    <Text bold color={filterMode === 'all' ? 'cyan' : 'gray'}>[a] All</Text>
+                    <Text> </Text>
+                    <Text bold color={filterMode === 'scoring' ? 'yellow' : 'gray'}>[s] Scoring</Text>
+                    <Text> </Text>
+                    <Text bold color={filterMode === 'fouls' ? 'red' : 'gray'}>[f] Fouls/TO</Text>
+                </Box>
+                {isActive && (
+                    <Text dimColor>↑/↓ or j/k scroll ({scrollOffset + 1}-{Math.min(scrollOffset + maxItems, displayActions.length)}/{displayActions.length})</Text>
+                )}
+            </Box>
 
             {/* Event Stream */}
             <Box flexDirection="column">

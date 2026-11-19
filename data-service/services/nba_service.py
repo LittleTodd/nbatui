@@ -56,10 +56,11 @@ class NBAService:
 
         is_today = date_str == get_local_today()
 
-        # 1. Cache completed/past dates by LOCAL date. Keys changed semantics
-        #    (ET date -> local date), so cache_service clears old rows.
+        # 1. Cache completed/past dates by LOCAL date. Also check schedule cache for future dates.
         if not is_today:
             cached = cache_service.get_cached_games(date_str)
+            if cached is None:
+                cached = cache_service.get_cached_schedule(date_str)
             if cached is not None:
                 return normalize_cached(cached, date_str)
 
@@ -115,6 +116,37 @@ class NBAService:
                     f"[NBA API] Failed for ET date {et_date} (local {date_str}): {e}",
                     flush=True,
                 )
+
+        # Fallback to schedule index for any missing scheduled games on this local date
+        if schedule is not None and schedule_game_ids:
+            for gid in schedule_game_ids:
+                if gid not in games_by_id and gid in schedule.by_game_id:
+                    s_game = schedule.by_game_id[gid]
+                    home_raw = s_game.get("homeTeam", {})
+                    away_raw = s_game.get("awayTeam", {})
+                    home_team = self._get_team_info(home_raw.get("teamId"))
+                    away_team = self._get_team_info(away_raw.get("teamId"))
+                    if not home_team.get("teamName") or home_team.get("teamName") == "Unknown":
+                        home_team["teamName"] = home_raw.get("teamName", "")
+                        home_team["teamCity"] = home_raw.get("teamCity", "")
+                        home_team["teamTricode"] = home_raw.get("teamTricode", "")
+                    if not away_team.get("teamName") or away_team.get("teamName") == "Unknown":
+                        away_team["teamName"] = away_raw.get("teamName", "")
+                        away_team["teamCity"] = away_raw.get("teamCity", "")
+                        away_team["teamTricode"] = away_raw.get("teamTricode", "")
+
+                    games_by_id[gid] = {
+                        "gameId": gid,
+                        "gameStatus": s_game.get("gameStatus") or 1,
+                        "gameStatusText": s_game.get("gameStatusText") or "",
+                        "period": 0,
+                        "gameClock": "",
+                        "gameTimeUTC": s_game.get("gameDateTimeUTC", ""),
+                        "gameDateET": s_game.get("etDate", ""),
+                        "localDate": s_game.get("localDate", date_str),
+                        "homeTeam": {**home_team, "score": 0},
+                        "awayTeam": {**away_team, "score": 0},
+                    }
 
         games_list = list(games_by_id.values())
 
@@ -173,83 +205,127 @@ class NBAService:
 
     def _fetch_stats_games(self, et_date: str) -> list[dict[str, Any]]:
         """
-        Fetch one NBA/ET calendar day from Stats API ``ScoreboardV2``.
-
-        ``gameTimeUTC`` is left empty here; the caller fills it from the season
-        schedule. This matters because ``GAME_DATE_EST`` is not a UTC timestamp
-        even though the API renders it with a ``T00:00:00`` suffix.
+        Fetch one NBA/ET calendar day from Stats API (ScoreboardV3, with fallback to ScoreboardV2).
         """
         from datetime import datetime, timezone
 
-        from nba_api.stats.endpoints import scoreboardv2
-
         from .timezone_utils import utc_to_et_date
-
-        board = scoreboardv2.ScoreboardV2(game_date=et_date)
-        data = board.get_dict()
-
-        # scoreboardv2 structure: resultSets[0] = GameHeader, [1] = LineScore
-        if "resultSets" not in data or len(data["resultSets"]) < 2:
-            return []
-
-        headers = data["resultSets"][0]["headers"]
-        rows = data["resultSets"][0]["rowSet"]
-        header_map = {name: index for index, name in enumerate(headers)}
-
-        line_score_headers = data["resultSets"][1]["headers"]
-        line_score_rows = data["resultSets"][1]["rowSet"]
-        line_score_map = {
-            name: index for index, name in enumerate(line_score_headers)
-        }
 
         games: dict[str, dict[str, Any]] = {}
 
-        for row in rows:
-            game_id = row[header_map["GAME_ID"]]
-            if game_id in games:
-                continue
+        # 1. Prefer ScoreboardV3
+        try:
+            from nba_api.stats.endpoints import scoreboardv3
 
-            home_id = row[header_map["HOME_TEAM_ID"]]
-            away_id = row[header_map["VISITOR_TEAM_ID"]]
-
-            home_score = 0
-            away_score = 0
-            for line_row in line_score_rows:
-                if line_row[line_score_map["GAME_ID"]] != game_id:
+            board = scoreboardv3.ScoreboardV3(game_date=et_date, timeout=10)
+            data = board.get_dict()
+            sb = data.get("scoreboard", {})
+            sb_games = sb.get("games", [])
+            for g in sb_games:
+                game_id = g.get("gameId")
+                if not game_id:
                     continue
-                team_id = line_row[line_score_map["TEAM_ID"]]
-                points = line_row[line_score_map["PTS"]]
-                if points is None:
-                    points = 0
-                if team_id == home_id:
-                    home_score = points
-                elif team_id == away_id:
-                    away_score = points
 
-            home_team = self._get_team_info(home_id)
-            away_team = self._get_team_info(away_id)
+                home_raw = g.get("homeTeam", {})
+                away_raw = g.get("awayTeam", {})
+                home_team = self._get_team_info(home_raw.get("teamId"))
+                away_team = self._get_team_info(away_raw.get("teamId"))
 
-            games[game_id] = {
-                "gameId": game_id,
-                "gameStatus": int(row[header_map["GAME_STATUS_ID"]]),
-                "gameStatusText": row[header_map["GAME_STATUS_TEXT"]],
-                "period": 0,
-                "gameClock": "",
-                # Filled from the season schedule by the caller. Never put
-                # GAME_DATE_EST here: it is an ET date, not a UTC timestamp.
-                "gameTimeUTC": "",
-                "gameDateET": et_date,
-                "homeTeam": {**home_team, "score": home_score},
-                "awayTeam": {**away_team, "score": away_score},
-            }
+                if not home_team.get("teamName") or home_team.get("teamName") == "Unknown":
+                    home_team["teamName"] = home_raw.get("teamName") or home_raw.get("teamSlug", "")
+                    home_team["teamCity"] = home_raw.get("teamCity", "")
+                    home_team["teamTricode"] = home_raw.get("teamTricode", "")
 
-        # Recover scores for games that ScoreboardV2 still reports as scheduled
-        # even though the ET date is in the past. This is the legacy fallback
-        # for occasional stats-API lag.
-        if games and any(g["gameStatus"] == 1 for g in games.values()):
-            now_et_date = utc_to_et_date(datetime.now(timezone.utc).isoformat())
-            if et_date < now_et_date:
-                self._fill_scores_from_gamelog(list(games.values()), et_date)
+                if not away_team.get("teamName") or away_team.get("teamName") == "Unknown":
+                    away_team["teamName"] = away_raw.get("teamName") or away_raw.get("teamSlug", "")
+                    away_team["teamCity"] = away_raw.get("teamCity", "")
+                    away_team["teamTricode"] = away_raw.get("teamTricode", "")
+
+                home_score = home_raw.get("score")
+                away_score = away_raw.get("score")
+
+                games[game_id] = {
+                    "gameId": game_id,
+                    "gameStatus": int(g.get("gameStatus", 1)),
+                    "gameStatusText": g.get("gameStatusText", ""),
+                    "period": g.get("period", 0),
+                    "gameClock": self._parse_game_clock(g.get("gameClock", "")) if g.get("gameClock") else "",
+                    "gameTimeUTC": g.get("gameTimeUTC", ""),
+                    "gameDateET": et_date,
+                    "homeTeam": {**home_team, "score": home_score if home_score is not None else 0},
+                    "awayTeam": {**away_team, "score": away_score if away_score is not None else 0},
+                }
+
+            if games:
+                if any(g["gameStatus"] == 1 for g in games.values()):
+                    now_et_date = utc_to_et_date(datetime.now(timezone.utc).isoformat())
+                    if et_date < now_et_date:
+                        self._fill_scores_from_gamelog(list(games.values()), et_date)
+                return list(games.values())
+        except Exception:
+            pass
+
+        # 2. ScoreboardV2 fallback
+        try:
+            from nba_api.stats.endpoints import scoreboardv2
+
+            board = scoreboardv2.ScoreboardV2(game_date=et_date, timeout=10)
+            data = board.get_dict()
+
+            if "resultSets" in data and len(data["resultSets"]) >= 2:
+                headers = data["resultSets"][0]["headers"]
+                rows = data["resultSets"][0]["rowSet"]
+                header_map = {name: index for index, name in enumerate(headers)}
+
+                line_score_headers = data["resultSets"][1]["headers"]
+                line_score_rows = data["resultSets"][1]["rowSet"]
+                line_score_map = {
+                    name: index for index, name in enumerate(line_score_headers)
+                }
+
+                for row in rows:
+                    game_id = row[header_map["GAME_ID"]]
+                    if game_id in games:
+                        continue
+
+                    home_id = row[header_map["HOME_TEAM_ID"]]
+                    away_id = row[header_map["VISITOR_TEAM_ID"]]
+
+                    home_score = 0
+                    away_score = 0
+                    for line_row in line_score_rows:
+                        if line_row[line_score_map["GAME_ID"]] != game_id:
+                            continue
+                        team_id = line_row[line_score_map["TEAM_ID"]]
+                        points = line_row[line_score_map["PTS"]]
+                        if points is None:
+                            points = 0
+                        if team_id == home_id:
+                            home_score = points
+                        elif team_id == away_id:
+                            away_score = points
+
+                    home_team = self._get_team_info(home_id)
+                    away_team = self._get_team_info(away_id)
+
+                    games[game_id] = {
+                        "gameId": game_id,
+                        "gameStatus": int(row[header_map["GAME_STATUS_ID"]]),
+                        "gameStatusText": row[header_map["GAME_STATUS_TEXT"]],
+                        "period": 0,
+                        "gameClock": "",
+                        "gameTimeUTC": "",
+                        "gameDateET": et_date,
+                        "homeTeam": {**home_team, "score": home_score},
+                        "awayTeam": {**away_team, "score": away_score},
+                    }
+
+                if games and any(g["gameStatus"] == 1 for g in games.values()):
+                    now_et_date = utc_to_et_date(datetime.now(timezone.utc).isoformat())
+                    if et_date < now_et_date:
+                        self._fill_scores_from_gamelog(list(games.values()), et_date)
+        except Exception:
+            pass
 
         return list(games.values())
 

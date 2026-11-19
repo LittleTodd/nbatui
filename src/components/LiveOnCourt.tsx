@@ -190,23 +190,25 @@ function PlayerStatsCard({ player, teamTricode, onClose }: { player: PlayerStats
             <Box justifyContent="space-between">
                 <Box>
                     <Text dimColor>MIN </Text>
-                    <Text bold color="#000000">{parseMinutes(stats.minutes)}</Text>
+                    <Text bold color="white">{parseMinutes(stats.minutes)}</Text>
                 </Box>
                 <Box>
                     <Text dimColor>STL </Text>
-                    <Text bold color={stats.steals >= 2 ? 'green' : '#000000'}>{stats.steals}</Text>
+                    <Text bold color={stats.steals >= 2 ? 'green' : 'white'}>{stats.steals}</Text>
                 </Box>
                 <Box>
                     <Text dimColor>BLK </Text>
-                    <Text bold color={stats.blocks >= 2 ? 'green' : '#000000'}>{stats.blocks}</Text>
+                    <Text bold color={stats.blocks >= 2 ? 'green' : 'white'}>{stats.blocks}</Text>
                 </Box>
                 <Box>
                     <Text dimColor>TO </Text>
-                    <Text bold color={stats.turnovers >= 4 ? 'red' : '#000000'}>{stats.turnovers}</Text>
+                    <Text bold color={stats.turnovers >= 4 ? 'red' : 'white'}>{stats.turnovers}</Text>
                 </Box>
                 <Box>
                     <Text dimColor>PF </Text>
-                    <Text bold color={stats.foulsPersonal >= 5 ? 'red' : stats.foulsPersonal >= 4 ? 'yellow' : '#000000'}>{stats.foulsPersonal}</Text>
+                    <Text bold color={stats.foulsPersonal >= 5 ? 'red' : stats.foulsPersonal >= 4 ? 'yellow' : 'white'}>
+                        {stats.foulsPersonal >= 5 ? `🚨${stats.foulsPersonal}` : stats.foulsPersonal >= 4 ? `⚠️${stats.foulsPersonal}` : stats.foulsPersonal}
+                    </Text>
                 </Box>
             </Box>
         </Box>

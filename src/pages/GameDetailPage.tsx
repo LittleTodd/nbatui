@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
-import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, findGameOdds, getGameStatusInfo, type GameOdds, fetchPlayByPlay, type PlayByPlayAction } from '../services/apiClient.js';
+import { type Game, fetchBoxScore, fetchStandings, fetchPolymarketOdds, findGameOdds, getGameStatusInfo, type GameOdds, fetchPlayByPlay, type PlayByPlayAction, fetchScoreCurve, type ScoreCurveData } from '../services/apiClient.js';
 import { TEAM_BG_COLORS, TEAM_TEXT_COLORS } from '../data/teamColors.js';
 import { PlayByPlayStream } from '../components/PlayByPlayStream.js';
 import { LiveOnCourt } from '../components/LiveOnCourt.js';
 import { OddsCurve } from '../components/OddsCurve.js';
+import { BrailleCourt } from '../components/BrailleCourt.js';
+import { SuperstarDuel } from '../components/SuperstarDuel.js';
+import { PlayerTradingCard, type TradingCardPlayer } from '../components/PlayerTradingCard.js';
+import { LeadTrackerChart } from '../components/charts/LeadTrackerChart.js';
+import { detectMomentumRun, checkMilestoneWatches } from '../utils/momentumDetector.js';
 
 interface GameDetailPageProps {
     game: Game;
@@ -32,13 +37,27 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     const [odds, setOdds] = useState<GameOdds | null>(null);
     const [loading, setLoading] = useState(true);
     const [playByPlay, setPlayByPlay] = useState<PlayByPlayAction[]>([]);
-    const [activeTab, setActiveTab] = useState<'playbyplay'>('playbyplay');
+    type DetailTab = 'boxscore' | 'lineups' | 'playbyplay' | 'leadtracker';
+    const [detailTab, setDetailTab] = useState<DetailTab>('boxscore');
+    const [showShotChart, setShowShotChart] = useState(false);
+    const [showDuel, setShowDuel] = useState(false);
+    const [tradingCardPlayer, setTradingCardPlayer] = useState<TradingCardPlayer | null>(null);
+    const [scoreCurve, setScoreCurve] = useState<ScoreCurveData | null>(null);
 
     // Focus state: 'stream' for play-by-play scrolling, 'oncourt' for player selection
     const [focusMode, setFocusMode] = useState<'stream' | 'oncourt'>('stream');
     const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
 
     const isScheduled = game.gameStatus === 1;
+
+    // Fetch score curve for live/completed game
+    useEffect(() => {
+        if (!isScheduled) {
+            fetchScoreCurve(game.gameId).then(data => {
+                if (data && mountedRef.current) setScoreCurve(data);
+            });
+        }
+    }, [game.gameId, isScheduled]);
 
     // Breathing animation for Live Stream indicator
     const [streamDotDim, setStreamDotDim] = useState(false);
@@ -137,10 +156,9 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
         return () => clearTimeout(timeoutId);
     }, [game.gameId, game.gameStatus, isScheduled]);
 
-    // Dedicated Polling Logic for Play-by-Play - Only runs when tab is active
+    // Dedicated Polling Logic for Play-by-Play & Shot Tracking
     useEffect(() => {
         if (isScheduled) return;
-        if (activeTab !== 'playbyplay') return;
 
         let timeoutId: NodeJS.Timeout;
         let isFetching = false;
@@ -170,10 +188,41 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
         fetchPBP();
 
         return () => clearTimeout(timeoutId);
-    }, [game.gameId, game.gameStatus, isScheduled, activeTab]);
+    }, [game.gameId, game.gameStatus, isScheduled]);
 
+
+    const momentumRun = useMemo(() => {
+        return detectMomentumRun(playByPlay, game.homeTeam.teamTricode, game.awayTeam.teamTricode);
+    }, [playByPlay, game.homeTeam.teamTricode, game.awayTeam.teamTricode]);
+
+    const milestones = useMemo(() => {
+        if (!boxScore) return [];
+        const homeWatches = checkMilestoneWatches(boxScore.homeTeam?.players || [], game.homeTeam.teamTricode);
+        const awayWatches = checkMilestoneWatches(boxScore.awayTeam?.players || [], game.awayTeam.teamTricode);
+        return [...homeWatches, ...awayWatches];
+    }, [boxScore, game.homeTeam.teamTricode, game.awayTeam.teamTricode]);
 
     useInput((input, key) => {
+        // Overlay modals take precedence on Esc
+        if (showShotChart) {
+            if (key.escape || input === 'c' || input === 'q') {
+                setShowShotChart(false);
+                return;
+            }
+        }
+        if (showDuel) {
+            if (key.escape || input === 'd' || input === 'q') {
+                setShowDuel(false);
+                return;
+            }
+        }
+        if (tradingCardPlayer) {
+            if (key.escape || input === 'v' || input === 'q') {
+                setTradingCardPlayer(null);
+                return;
+            }
+        }
+
         // Escape exits - but if focus is on oncourt panel, return to stream first
         if (key.escape || input === 'q' || key.backspace) {
             if (isStatsModalOpen) return;
@@ -182,15 +231,49 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 return;
             }
             onBack();
-        }
-        // Tab key switches focus between stream and oncourt panel (only for live games)
-        if (key.tab && game.gameStatus === 2) {
-            setFocusMode(prev => prev === 'stream' ? 'oncourt' : 'stream');
             return;
         }
-        // Tab switching: P for Play-by-Play
-        if (input === 'p' || input === 'P') {
-            setActiveTab('playbyplay');
+
+        // Direct feature shortcuts
+        if (input === 'c') {
+            setShowShotChart(prev => !prev);
+            return;
+        }
+        if (input === 'd') {
+            setShowDuel(prev => !prev);
+            return;
+        }
+        if (input === 'v') {
+            const topHome = boxScore?.homeTeam?.players?.[0];
+            const topAway = boxScore?.awayTeam?.players?.[0];
+            const p = topHome || topAway;
+            if (p) {
+                setTradingCardPlayer({
+                    personId: p.personId,
+                    name: p.name || p.nameI || 'Player',
+                    jerseyNum: p.jerseyNum || '0',
+                    position: p.position || 'G',
+                    teamTricode: topHome ? game.homeTeam.teamTricode : game.awayTeam.teamTricode,
+                    statistics: p.statistics || {}
+                });
+            }
+            return;
+        }
+
+        // Tab switching: 1, 2, 3, 4
+        if (input === '1') setDetailTab('boxscore');
+        if (input === '2') setDetailTab('lineups');
+        if (input === '3' || input === 'p' || input === 'P') setDetailTab('playbyplay');
+        if (input === '4' || input === 'l' || input === 'L') setDetailTab('leadtracker');
+
+        // Tab key cycles through main tabs
+        if (key.tab) {
+            const tabs: DetailTab[] = ['boxscore', 'lineups', 'playbyplay', 'leadtracker'];
+            setDetailTab(prev => {
+                const idx = tabs.indexOf(prev);
+                return tabs[(idx + 1) % tabs.length] || 'boxscore';
+            });
+            return;
         }
     });
 
@@ -217,96 +300,180 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
         );
     }
 
-    return (
-        <Box flexDirection="column" paddingX={1} paddingTop={1} borderStyle="round" borderColor="cyan">
-
-            {/* Top Row: Quarter Scoring + Live On Court (side by side, equal height) */}
-            <Box flexDirection="row" alignItems="stretch" gap={1}>
-                {/* Quarter-by-Quarter Scoring - wrapped for flex control */}
-                <Box flexGrow={1} flexBasis={0}>
-                    <QuarterScoreTable
-                        awayTeam={boxScore.awayTeam}
-                        homeTeam={boxScore.homeTeam}
-                        currentPeriod={boxScore.period}
-                        isLive={boxScore.gameStatus === 2}
-                    />
-                </Box>
-
-                {/* Live On Court Panel - Only show for live games */}
-                {boxScore.gameStatus === 2 && (
-                    <Box flexGrow={1} flexBasis={0}>
-                        <LiveOnCourt
-                            awayTeam={boxScore.awayTeam}
-                            homeTeam={boxScore.homeTeam}
-                            isActive={focusMode === 'oncourt'}
-                            onModalStateChange={setIsStatsModalOpen}
-                        />
-                    </Box>
-                )}
-            </Box>
-
-
-
-            <Box flexDirection="row" justifyContent="center">
-                {/* Away Team Top Performers */}
-                <BoxScoreTable
-                    teamName={boxScore.awayTeam.teamCity}
-                    teamTricode={boxScore.awayTeam.teamTricode}
-                    players={boxScore.awayTeam.players}
-                />
-
-                {/* Team Stats Comparison - Center */}
-                <TeamStatsComparison
-                    awayTeam={boxScore.awayTeam}
-                    homeTeam={boxScore.homeTeam}
-                />
-
-                {/* Home Team Top Performers */}
-                <BoxScoreTable
-                    teamName={boxScore.homeTeam.teamCity}
-                    teamTricode={boxScore.homeTeam.teamTricode}
-                    players={boxScore.homeTeam.players}
-                />
-            </Box>
-
-            {/* Play-by-Play Bottom Panel */}
-            <Box flexDirection="column" marginTop={1} paddingX={1} borderStyle="round" borderColor="gray">
-
-                {/* Tab Header */}
-                <Box marginBottom={1}>
-                    <Text
-                        bold={activeTab === 'playbyplay'}
-                        color={activeTab === 'playbyplay' ? 'green' : 'gray'}
-                    >
-                        <Text>[P] </Text>
-                        {game.gameStatus === 2 ? (
-                            <Text>
-                                <Text dimColor={streamDotDim}>▶</Text> Live Stream
-                            </Text>
-                        ) : (
-                            '📜 Play-by-Play'
-                        )}
-                    </Text>
-                </Box>
-
-                {/* Tab Content */}
-                <PlayByPlayStream
+    // Modal Overlays
+    if (showShotChart) {
+        return (
+            <Box flexDirection="column" alignItems="center" paddingX={1} paddingTop={1}>
+                <BrailleCourt
                     actions={playByPlay}
                     homeTricode={game.homeTeam.teamTricode}
                     awayTricode={game.awayTeam.teamTricode}
                     homeName={game.homeTeam.teamName}
                     awayName={game.awayTeam.teamName}
-                    homeScore={game.homeTeam.score}
-                    awayScore={game.awayTeam.score}
-                    isLive={game.gameStatus === 2}
-                    gameStatusText={boxScore?.gameStatusText || game.gameStatusText}
+                    onClose={() => setShowShotChart(false)}
                 />
             </Box>
+        );
+    }
 
+    if (showDuel) {
+        return (
+            <Box flexDirection="column" alignItems="center" paddingX={1} paddingTop={1}>
+                <SuperstarDuel
+                    awayTeam={boxScore.awayTeam}
+                    homeTeam={boxScore.homeTeam}
+                    onClose={() => setShowDuel(false)}
+                />
+            </Box>
+        );
+    }
 
-            {/* Footer - acts as bottom spacing (replaces paddingBottom) */}
-            <Box paddingLeft={1}>
-                <Text color="magenta">[Esc] 🏠 Return to Main Menu</Text>
+    if (tradingCardPlayer) {
+        return (
+            <Box flexDirection="column" alignItems="center" paddingX={1} paddingTop={1}>
+                <PlayerTradingCard
+                    player={tradingCardPlayer}
+                    onClose={() => setTradingCardPlayer(null)}
+                />
+            </Box>
+        );
+    }
+
+    return (
+        <Box flexDirection="column" paddingX={1} paddingTop={1} borderStyle="round" borderColor="cyan">
+            {/* Top Row: Quarter Scoring */}
+            <Box flexDirection="column">
+                <QuarterScoreTable
+                    awayTeam={boxScore.awayTeam}
+                    homeTeam={boxScore.homeTeam}
+                    currentPeriod={boxScore.period}
+                    isLive={boxScore.gameStatus === 2}
+                />
+
+                {/* Live Momentum Surge & Milestones Banner */}
+                {(momentumRun || milestones.length > 0) && (
+                    <Box justifyContent="space-between" paddingX={1} marginBottom={1}>
+                        {momentumRun ? (
+                            <Text bold color="yellow">{momentumRun.description}</Text>
+                        ) : <Box />}
+                        {milestones.length > 0 ? (
+                            <Text bold color="cyan">{milestones[0]?.playerName}: {milestones[0]?.milestone} ({milestones[0]?.summary})</Text>
+                        ) : <Box />}
+                    </Box>
+                )}
+            </Box>
+
+            {/* Navigation Tab Bar */}
+            <Box justifyContent="space-between" borderStyle="single" borderColor="gray" paddingX={1} marginBottom={1}>
+                <Box>
+                    <Text bold color={detailTab === 'boxscore' ? 'cyan' : 'gray'}>[1] Box Score</Text>
+                    <Text> </Text>
+                    <Text bold color={detailTab === 'lineups' ? 'cyan' : 'gray'}>[2] Live Lineups</Text>
+                    <Text> </Text>
+                    <Text bold color={detailTab === 'playbyplay' ? 'cyan' : 'gray'}>
+                        [3] {game.gameStatus === 2 ? '▶ Live Stream' : 'Play-by-Play'}
+                    </Text>
+                    <Text> </Text>
+                    <Text bold color={detailTab === 'leadtracker' ? 'cyan' : 'gray'}>[4] Lead Tracker</Text>
+                </Box>
+                <Box>
+                    <Text color="yellow">[c] BrailleCourt™</Text>
+                    <Text> </Text>
+                    <Text color="yellow">[d] Duel</Text>
+                    <Text> </Text>
+                    <Text color="yellow">[v] Card</Text>
+                </Box>
+            </Box>
+
+            {/* Tab 1: Box Score & Comparison */}
+            {detailTab === 'boxscore' && (
+                <Box flexDirection="row" justifyContent="center">
+                    <BoxScoreTable
+                        teamName={boxScore.awayTeam.teamCity}
+                        teamTricode={boxScore.awayTeam.teamTricode}
+                        players={boxScore.awayTeam.players}
+                    />
+                    <TeamStatsComparison
+                        awayTeam={boxScore.awayTeam}
+                        homeTeam={boxScore.homeTeam}
+                    />
+                    <BoxScoreTable
+                        teamName={boxScore.homeTeam.teamCity}
+                        teamTricode={boxScore.homeTeam.teamTricode}
+                        players={boxScore.homeTeam.players}
+                    />
+                </Box>
+            )}
+
+            {/* Tab 2: Live On Court & Lineups */}
+            {detailTab === 'lineups' && (
+                <Box flexDirection="column">
+                    <LiveOnCourt
+                        awayTeam={boxScore.awayTeam}
+                        homeTeam={boxScore.homeTeam}
+                        isActive={true}
+                        onPlayerSelect={(p, tricode) => {
+                            setTradingCardPlayer({
+                                personId: p.personId,
+                                name: p.name || p.nameI,
+                                jerseyNum: p.jerseyNum,
+                                position: p.position,
+                                teamTricode: tricode,
+                                statistics: p.statistics
+                            });
+                        }}
+                        onModalStateChange={setIsStatsModalOpen}
+                    />
+                </Box>
+            )}
+
+            {/* Tab 3: Play-by-Play Stream */}
+            {detailTab === 'playbyplay' && (
+                <Box flexDirection="column" paddingX={1} borderStyle="round" borderColor="gray">
+                    <PlayByPlayStream
+                        actions={playByPlay}
+                        homeTricode={game.homeTeam.teamTricode}
+                        awayTricode={game.awayTeam.teamTricode}
+                        homeName={game.homeTeam.teamName}
+                        awayName={game.awayTeam.teamName}
+                        homeScore={game.homeTeam.score}
+                        awayScore={game.awayTeam.score}
+                        isLive={game.gameStatus === 2}
+                        gameStatusText={boxScore?.gameStatusText || game.gameStatusText}
+                        isActive={true}
+                    />
+                </Box>
+            )}
+
+            {/* Tab 4: Lead Tracker Chart */}
+            {detailTab === 'leadtracker' && (
+                <Box flexDirection="column" alignItems="center" paddingX={1} borderStyle="round" borderColor="gray">
+                    <Box justifyContent="space-between" width="100%" marginBottom={1}>
+                        <Text bold color="cyan">📈 Game Flow: Lead Margin Progression</Text>
+                        <Text dimColor>Positive = {game.homeTeam.teamTricode} Lead | Negative = {game.awayTeam.teamTricode} Lead</Text>
+                    </Box>
+                    {scoreCurve && scoreCurve.points.length > 0 ? (
+                        <LeadTrackerChart
+                            data={scoreCurve.points.map(p => p.homeScore - p.awayScore)}
+                            teamColor={TEAM_BG_COLORS[game.homeTeam.teamTricode] || 'green'}
+                            oppColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || 'red'}
+                            teamLabel={game.homeTeam.teamTricode}
+                            oppLabel={game.awayTeam.teamTricode}
+                            width={65}
+                            height={12}
+                        />
+                    ) : (
+                        <Box height={10} alignItems="center" justifyContent="center">
+                            <Text dimColor>Scoring progression data is loading or not yet available.</Text>
+                        </Box>
+                    )}
+                </Box>
+            )}
+
+            {/* Footer */}
+            <Box paddingLeft={1} marginTop={1} justifyContent="space-between">
+                <Text color="magenta">[Esc] 🏠 Return to Map</Text>
+                <Text dimColor>[1-4] Tabs • [Tab] Cycle • [c] Shot Chart • [d] Duel • [v] Card</Text>
             </Box>
         </Box>
     );
@@ -498,6 +665,7 @@ interface TeamWithPeriods {
     teamTricode: string;
     score: number;
     periods?: Period[];
+    statistics?: any;
 }
 
 interface QuarterScoreTableProps {
@@ -540,6 +708,19 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
     // Check if a period is the current live period
     const isCurrentPeriod = (idx: number) => isLive && (idx + 1) === currentPeriod;
 
+    const renderTimeouts = (stats?: any) => {
+        if (!stats || typeof stats.timeoutsRemaining !== 'number') return null;
+        const total = 7;
+        const rem = Math.max(0, Math.min(total, stats.timeoutsRemaining));
+        return (
+            <Box marginLeft={1}>
+                <Text dimColor>TO: </Text>
+                <Text color="yellow">{'●'.repeat(rem)}</Text>
+                <Text dimColor>{'○'.repeat(total - rem)}</Text>
+            </Box>
+        );
+    };
+
     return (
         <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="gray" paddingX={1} flexGrow={1}>
             <Text bold color="cyan">📊 Scoring by Quarter</Text>
@@ -580,6 +761,10 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
                             {awayTeam.score}
                         </Text>
                     </Box>
+                    {awayTeam.statistics?.inBonus === "1" && (
+                        <Box marginLeft={1}><Text bold backgroundColor="red" color="white"> BONUS </Text></Box>
+                    )}
+                    {renderTimeouts(awayTeam.statistics)}
                 </Box>
 
                 {/* Home Team Row */}
@@ -603,6 +788,10 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
                             {homeTeam.score}
                         </Text>
                     </Box>
+                    {homeTeam.statistics?.inBonus === "1" && (
+                        <Box marginLeft={1}><Text bold backgroundColor="red" color="white"> BONUS </Text></Box>
+                    )}
+                    {renderTimeouts(homeTeam.statistics)}
                 </Box>
             </Box>
         </Box>
