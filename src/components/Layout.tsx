@@ -12,11 +12,9 @@ export function Header({ dateDisplay }: HeaderProps) {
         <Box justifyContent="center" flexDirection="column" alignItems="center">
             <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
             <Box>
-                <Text dimColor>[ </Text>
-                <Text color="cyan" bold>[ ◀</Text>
-                <Text bold color="yellow">  📅 {dateDisplay}  </Text>
-                <Text color="cyan" bold>▶ ]</Text>
-                <Text dimColor> ]</Text>
+                <Text color="cyan" bold>◀ </Text>
+                <Text bold color="yellow"> 📅 {dateDisplay} </Text>
+                <Text color="cyan" bold> ▶</Text>
             </Box>
         </Box>
     );
@@ -56,10 +54,10 @@ export function Footer({ connected, loading, gamesCount, warning, termWidth = 10
     const isMedium = termWidth >= 105 && termWidth < 125;
 
     const controlsHint = isNarrow
-        ? `${gamesCount}G • ←↑↓→ Map • [/] Date • s Standings • z Clutch`
+        ? `${gamesCount}G • ←/→ Date • ↑/↓ Select • s Standings • z Clutch`
         : isMedium
-            ? `${gamesCount}G • ←↑↓→ 2D Map • [/] Date • / Search • s Standings • z Clutch`
-            : `${gamesCount} Games • ←↑↓→: 2D Map Nav | [/]: Date | z: Clutch | s: Standings | /: Search`;
+            ? `${gamesCount}G • ←/→ Date • ↑/↓ Select • / Search • s Standings • z Clutch`
+            : `${gamesCount} Games • ←/→: Date | ↑/↓: Select | z: Clutch | s: Standings | /: Search`;
 
     const actionsHint = isNarrow
         ? `Enter Detail • r Refresh • q Quit`

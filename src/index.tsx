@@ -181,13 +181,13 @@ function App() {
         // Skip map navigation when standings sidebar is visible
         if (showStandings) return;
 
-        // Date Switching: [ / ] or PageUp/PageDown or , / . or t for today
-        if (input === '[' || key.pageUp || input === ',') {
+        // Date Switching: ← / → (or [ / ] or , / .)
+        if (key.leftArrow || input === 'h' || input === '[' || key.pageUp || input === ',') {
             changeDate('prev');
             return;
         }
 
-        if (input === ']' || key.pageDown || input === '.') {
+        if (key.rightArrow || input === 'l' || input === ']' || key.pageDown || input === '.') {
             changeDate('next');
             return;
         }
@@ -197,7 +197,7 @@ function App() {
             return;
         }
 
-        // 2D Map Navigation: Arrows & Vim keys (h/j/k/l)
+        // Game Selection: ↑ / ↓ (or k / j)
         if (key.upArrow || input === 'k') {
             moveSelection('up');
             return;
@@ -205,16 +205,6 @@ function App() {
 
         if (key.downArrow || input === 'j') {
             moveSelection('down');
-            return;
-        }
-
-        if (key.leftArrow || input === 'h') {
-            moveSelection('left');
-            return;
-        }
-
-        if (key.rightArrow || input === 'l') {
-            moveSelection('right');
             return;
         }
     });
@@ -305,7 +295,7 @@ function App() {
                                 </Box>
                                 <Box marginTop={1}>
                                     <Text dimColor>Use </Text>
-                                    <Text color="cyan" bold>[ / ]</Text>
+                                    <Text color="cyan" bold>← →</Text>
                                     <Text dimColor> to browse other dates</Text>
                                 </Box>
                             </Box>

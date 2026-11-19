@@ -95,8 +95,8 @@ cd nbatui
 
 | 按键 Key | 功能 Action |
 |----------|-------------|
-| `← / → / ↑ / ↓` or `h/j/k/l` | 2D 空间地图导航 (True 2D Map Navigation) |
-| `[ / ]` or `, / .` | 切换日期 (Change Date) (`t` 回到今天) |
+| `← / →` | 切换日期 Change date (`t` 回到今天) |
+| `↑ / ↓` | 选择比赛 (按纬度上下切换) Select game |
 | `z / Z` | 决胜时刻模式 (NBA RedZone / Clutch Mode Auto-Hop) |
 | `Enter` | 查看详情 / 选择球员 (View Detail / Focus) |
 | `1 / 2 / 3 / 4` or `Tab` | 详情页工作区 (1:BoxScore, 2:Lineups, 3:PBP, 4:LeadTracker) |
