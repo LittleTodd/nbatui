@@ -8,40 +8,26 @@ interface RosterTabProps {
 }
 
 export const RosterTab = ({ players, loading }: RosterTabProps) => {
-    if (loading) {
-        return (
-            <Box flexDirection="column" alignItems="center" justifyContent="center" height={15}>
-                <Text color="yellow">Loading roster...</Text>
-            </Box>
-        );
-    }
-
-    if (!players || players.length === 0) {
-        return (
-            <Box flexDirection="column" alignItems="center" justifyContent="center" height={15}>
-                <Text dimColor>No roster data available</Text>
-            </Box>
-        );
-    }
-
     const [startIndex, setStartIndex] = useState(0);
 
     // Sort by minutes played (descending) to show starters first
-    const sortedPlayers = [...players].sort((a, b) => {
-        const aMin = a.stats?.min || 0;
-        const bMin = b.stats?.min || 0;
-        return bMin - aMin;
-    });
+    const sortedPlayers = players && players.length > 0
+        ? [...players].sort((a, b) => {
+            const aMin = a.stats?.min || 0;
+            const bMin = b.stats?.min || 0;
+            return bMin - aMin;
+        })
+        : [];
 
     const PAGE_SIZE = 16;
 
     useInput((input, key) => {
-        if (loading || players.length === 0) return;
+        if (loading || sortedPlayers.length === 0) return;
 
-        if (key.downArrow) {
+        if (key.downArrow || input === 'j') {
             setStartIndex(prev => Math.min(prev + 1, Math.max(0, sortedPlayers.length - PAGE_SIZE)));
         }
-        if (key.upArrow) {
+        if (key.upArrow || input === 'k') {
             setStartIndex(prev => Math.max(prev - 1, 0));
         }
         if (key.pageDown) {
@@ -51,6 +37,22 @@ export const RosterTab = ({ players, loading }: RosterTabProps) => {
             setStartIndex(prev => Math.max(prev - PAGE_SIZE, 0));
         }
     });
+
+    if (loading) {
+        return (
+            <Box flexDirection="column" alignItems="center" justifyContent="center" height={15}>
+                <Text color="yellow">Loading roster...</Text>
+            </Box>
+        );
+    }
+
+    if (sortedPlayers.length === 0) {
+        return (
+            <Box flexDirection="column" alignItems="center" justifyContent="center" height={15}>
+                <Text dimColor>No roster data available</Text>
+            </Box>
+        );
+    }
 
     const visiblePlayers = sortedPlayers.slice(startIndex, startIndex + PAGE_SIZE);
 

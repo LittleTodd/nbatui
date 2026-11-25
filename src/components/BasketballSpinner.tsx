@@ -32,7 +32,7 @@ const BasketballSpinner = () => {
 
     return (
         <Box width={12} flexShrink={0}>
-            <Text color="orange">{frames[frame]}</Text>
+            <Text color="#FF8C00">{frames[frame]}</Text>
         </Box>
     );
 };

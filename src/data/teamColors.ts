@@ -85,7 +85,7 @@ export const TEAM_TEXT_COLORS: Record<string, string> = {
     'BOS': '#FFFFFF', // 白
     'BKN': '#FFFFFF', // 白
     'CHA': '#FFFFFF', // 白
-    'CHI': '#000000', // 黑
+    'CHI': '#FFFFFF', // 白 (Improved: WCAG AA contrast on #CE1141)
     'CLE': '#FDB927', // 金
     'DAL': '#B8C4CA', // 银
     'DEN': '#FEC524', // 金
@@ -100,7 +100,7 @@ export const TEAM_TEXT_COLORS: Record<string, string> = {
     'MIL': '#F0EBD2', // 奶油
     'MIN': '#78BE20', // 荧光绿
     'NOP': '#E5C38C', // 香槟金 (Improved: High Contrast Champagne)
-    'NYK': '#F58426', // 橙
+    'NYK': '#FFFFFF', // 白 (Improved: WCAG AA contrast on #006BB6)
     'OKC': '#FFB81C', // 黄 (Corrected: Thunder Yellow)
     'ORL': '#C4CED4', // 银
     'PHI': '#FFFFFF', // 白
@@ -108,7 +108,7 @@ export const TEAM_TEXT_COLORS: Record<string, string> = {
     'POR': '#E03A3E', // 红 (Kept as requested)
     'SAC': '#D4DCE3', // 亮银灰 (Improved: High Contrast Silver)
     'SAS': '#EFEFEF', // 亮银白 (Improved: High Contrast White-Silver)
-    'TOR': '#000000', // 黑
+    'TOR': '#FFFFFF', // 白 (Improved: WCAG AA contrast on #CE1141)
     'UTA': '#F9A01B', // 黄
     'WAS': '#FF6B6B', // 亮红 (Improved: High Contrast Coral Red)
 };
@@ -203,16 +203,17 @@ export function getChartColor(teamTricode: string, isLightBackground: boolean = 
  * This is a heuristic - can be overridden by config
  */
 export function detectLightBackground(): boolean {
-    // Check COLORFGBG environment variable (format: "fg;bg" where common values are 15;0 for dark, 0;15 for light)
+    // Check COLORFGBG environment variable (supports both "fg;bg" and 3-part "fg;default;bg")
     const colorFgBg = process.env.COLORFGBG;
     if (colorFgBg) {
-        const parts = colorFgBg.split(';');
-        const bg = parseInt(parts[1] || '0', 10);
-        // Values >= 7 typically indicate light backgrounds
-        return bg >= 7;
+        const parts = colorFgBg.split(';').filter(Boolean);
+        const bg = parseInt(parts[parts.length - 1] || '', 10);
+        if (!Number.isNaN(bg)) {
+            return bg >= 7;
+        }
     }
 
-    // Default assumption: light background (most common for macOS terminals)
-    return true;
+    // Default assumption: dark background (standard for modern dev terminals)
+    return false;
 }
 

@@ -6,9 +6,10 @@ import { TeamDetailModal } from './TeamDetailModal.js';
 interface StandingsSidebarProps {
     visible: boolean;
     onClose?: () => void;
+    onModalStateChange?: (isOpen: boolean) => void;
 }
 
-export const StandingsSidebar = ({ visible, onClose }: StandingsSidebarProps) => {
+export const StandingsSidebar = ({ visible, onClose, onModalStateChange }: StandingsSidebarProps) => {
     const [standings, setStandings] = useState<any[]>([]);
     const [props, setProps] = useState<Record<string, any[]>>({});
 
@@ -19,20 +20,28 @@ export const StandingsSidebar = ({ visible, onClose }: StandingsSidebarProps) =>
     const [selectedTeam, setSelectedTeam] = useState<any | null>(null);
 
     useEffect(() => {
-        if (visible) {
-            // Fetch Standings
-            fetchStandings().then(data => {
-                if (data && data.standings) {
-                    setStandings(data.standings);
-                }
-            });
+        onModalStateChange?.(showModal);
+    }, [showModal, onModalStateChange]);
 
-            // Fetch Props
-            fetchPolymarketProps().then(data => {
-                if (data) setProps(data);
-            });
-        }
+    useEffect(() => {
+        if (!visible) return;
+        let cancelled = false;
+
+        fetchStandings().then(data => {
+            if (!cancelled && data && data.standings) {
+                setStandings(data.standings);
+            }
+        });
+
+        fetchPolymarketProps().then(data => {
+            if (!cancelled && data) setProps(data);
+        });
+
+        return () => { cancelled = true; };
     }, [visible]);
+
+    const east = standings.filter((t: any) => t.Conference === 'East').slice(0, 15);
+    const west = standings.filter((t: any) => t.Conference === 'West').slice(0, 15);
 
     // Handle keyboard navigation
     useInput((input, key) => {
@@ -47,24 +56,31 @@ export const StandingsSidebar = ({ visible, onClose }: StandingsSidebarProps) =>
             return;
         }
 
-        // Navigate up/down in current conference
-        if (key.upArrow) {
+        const activeConf = selectedConf === 'east' ? east : west;
+        const maxIdx = Math.max(0, activeConf.length - 1);
+
+        // Navigate up/down in current conference (Arrow keys + Vim j/k)
+        if (key.upArrow || input === 'k') {
             setSelectedIdx(prev => Math.max(0, prev - 1));
         }
-        if (key.downArrow) {
-            setSelectedIdx(prev => Math.min(14, prev + 1));
+        if (key.downArrow || input === 'j') {
+            setSelectedIdx(prev => Math.min(maxIdx, prev + 1));
         }
 
-        // Switch between East and West
-        if (key.leftArrow || key.rightArrow || input === '\t') {
-            setSelectedConf(prev => prev === 'east' ? 'west' : 'east');
+        // Switch between East and West (Arrow keys + Vim h/l + Tab)
+        if (key.leftArrow || key.rightArrow || input === 'h' || input === 'l' || key.tab) {
+            setSelectedConf(prev => {
+                const next = prev === 'east' ? 'west' : 'east';
+                const nextList = next === 'east' ? east : west;
+                setSelectedIdx(idx => Math.min(idx, Math.max(0, nextList.length - 1)));
+                return next;
+            });
         }
 
         // Open team detail modal
         if (key.return) {
-            const conf = selectedConf === 'east' ? east : west;
-            if (conf[selectedIdx]) {
-                setSelectedTeam(conf[selectedIdx]);
+            if (activeConf[selectedIdx]) {
+                setSelectedTeam(activeConf[selectedIdx]);
                 setShowModal(true);
             }
         }
@@ -79,10 +95,6 @@ export const StandingsSidebar = ({ visible, onClose }: StandingsSidebarProps) =>
             </Box>
         );
     }
-
-    // Split East/West and take top 15
-    const east = standings.filter((t: any) => t.Conference === 'East').slice(0, 15);
-    const west = standings.filter((t: any) => t.Conference === 'West').slice(0, 15);
 
     const renderTeamRow = (t: any, isSelected: boolean) => {
         const rank = t.PlayoffRank;

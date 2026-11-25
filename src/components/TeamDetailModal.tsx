@@ -52,8 +52,8 @@ export const TeamDetailModal = ({ team, visible, onClose }: TeamDetailModalProps
             return;
         }
 
-        // Tab switching with Tab key or number keys
-        if (key.tab || key.rightArrow) {
+        // Tab switching with Tab key, arrow keys, or Vim h/l
+        if (key.tab || key.rightArrow || input === 'l') {
             setActiveTab(prev => {
                 if (prev === 'roster') return 'record';
                 if (prev === 'record') return 'info';
@@ -61,7 +61,7 @@ export const TeamDetailModal = ({ team, visible, onClose }: TeamDetailModalProps
             });
         }
 
-        if (key.leftArrow || (key.shift && key.tab)) {
+        if (key.leftArrow || input === 'h' || (key.shift && key.tab)) {
             setActiveTab(prev => {
                 if (prev === 'info') return 'record';
                 if (prev === 'record') return 'roster';
@@ -75,16 +75,16 @@ export const TeamDetailModal = ({ team, visible, onClose }: TeamDetailModalProps
         if (input === '3') setActiveTab('info');
     });
 
-    // Fetch data when tab changes or team changes
+    // Fetch data when tab changes or team changes (with cancellation guard against race conditions)
     useEffect(() => {
         if (!visible || !team) return;
-
+        let cancelled = false;
         const teamId = team.TeamID;
 
-        // Load data based on active tab
         if (activeTab === 'roster' && !roster) {
             setLoading(prev => ({ ...prev, roster: true }));
             fetchTeamRoster(teamId).then(data => {
+                if (cancelled) return;
                 setRoster(data);
                 setLoading(prev => ({ ...prev, roster: false }));
             });
@@ -94,8 +94,9 @@ export const TeamDetailModal = ({ team, visible, onClose }: TeamDetailModalProps
             setLoading(prev => ({ ...prev, record: true }));
             Promise.all([
                 fetchTeamGamelog(teamId),
-                fetchTeamInfo(teamId), // Also fetch for season info
+                fetchTeamInfo(teamId),
             ]).then(([logData, infoData]) => {
+                if (cancelled) return;
                 setGamelog(logData);
                 if (!teamInfo) setTeamInfo(infoData);
                 setLoading(prev => ({ ...prev, record: false }));
@@ -105,10 +106,13 @@ export const TeamDetailModal = ({ team, visible, onClose }: TeamDetailModalProps
         if (activeTab === 'info' && !teamInfo) {
             setLoading(prev => ({ ...prev, info: true }));
             fetchTeamInfo(teamId).then(data => {
+                if (cancelled) return;
                 setTeamInfo(data);
                 setLoading(prev => ({ ...prev, info: false }));
             });
         }
+
+        return () => { cancelled = true; };
     }, [visible, team, activeTab, roster, gamelog, teamInfo]);
 
     // Reset state when team changes
