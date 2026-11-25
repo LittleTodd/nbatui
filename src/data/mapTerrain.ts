@@ -37,6 +37,7 @@ export const WAVE_FRAMES = ['~', '≈', '∼', '∿'];
  * @param mapHeight Total map height
  */
 export function getTerrainRegion(col: number, mapWidth: number, row: number, mapHeight: number): TerrainRegion {
+    if (mapWidth <= 0 || mapHeight <= 0) return 'plains';
     const xPercent = (col / mapWidth) * 100;
     const yPercent = (row / mapHeight) * 100;
 

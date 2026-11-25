@@ -46,53 +46,60 @@ export function detectMomentumRun(
 ): MomentumRun | null {
     if (!actions || actions.length < 4) return null;
 
-    // Filter to scoring actions
-    const scoring = actions.filter(a =>
-        (a.shotResult === 'Made' || a.actionType === 'freethrow') &&
-        (a.teamTricode === homeTricode || a.teamTricode === awayTricode)
-    );
+    // Filter to actual made scoring actions (exclude missed free throws)
+    const scoring = actions.filter(a => {
+        if (a.teamTricode !== homeTricode && a.teamTricode !== awayTricode) return false;
+        const desc = a.description || '';
+        if (a.shotResult === 'Made') return true;
+        if (a.actionType === 'freethrow') {
+            return a.shotResult !== 'Missed' && !/\bMISS\b/i.test(desc);
+        }
+        return false;
+    });
 
     if (scoring.length < 3) return null;
 
-    // Look at the latest scoring events (up to 12)
-    const recent = scoring.slice(-12);
+    // Scan backwards through recent scoring events (up to 16) to capture the full surge
+    const recent = scoring.slice(-16);
     let homePts = 0;
     let awayPts = 0;
+    let bestRun: MomentumRun | null = null;
 
     for (let i = recent.length - 1; i >= 0; i--) {
         const a = recent[i];
         if (!a) continue;
 
+        const desc = a.description || '';
         let pts = 2;
-        if (a.actionType === '3pt' || a.description.includes('3PT')) pts = 3;
-        else if (a.actionType === 'freethrow' || a.description.includes('Free Throw')) pts = 1;
+        if (a.actionType === '3pt' || desc.includes('3PT')) pts = 3;
+        else if (a.actionType === 'freethrow' || desc.includes('Free Throw')) pts = 1;
 
         if (a.teamTricode === homeTricode) homePts += pts;
         else if (a.teamTricode === awayTricode) awayPts += pts;
 
-        // Check for dominant run (>= 8 point margin or >= 10-2 run)
-        if (homePts >= 9 && awayPts <= 2) {
-            return {
+        // Track the largest qualifying run (>= 9 pts while opponent scored <= 3)
+        if (homePts >= 9 && awayPts <= 3) {
+            bestRun = {
                 teamTricode: homeTricode,
                 teamRun: homePts,
                 oppRun: awayPts,
                 clockSpan: `${homePts}-${awayPts} Run`,
                 description: `🔥 ${homeTricode} on a ${homePts}-${awayPts} surge!`
             };
-        }
-
-        if (awayPts >= 9 && homePts <= 2) {
-            return {
+        } else if (awayPts >= 9 && homePts <= 3) {
+            bestRun = {
                 teamTricode: awayTricode,
                 teamRun: awayPts,
                 oppRun: homePts,
                 clockSpan: `${awayPts}-${homePts} Run`,
                 description: `🔥 ${awayTricode} on a ${awayPts}-${homePts} surge!`
             };
+        } else if (bestRun && homePts > 3 && awayPts > 3) {
+            break;
         }
     }
 
-    return null;
+    return bestRun;
 }
 
 /**
@@ -123,11 +130,18 @@ export function checkMilestoneWatches(players: any[], teamTricode: string): Mile
         const doubleDigits = categories.filter(c => c.val >= 10);
         const nearTen = categories.filter(c => c.val >= 8 && c.val < 10);
 
+        const formatTopStats = () => {
+            const parts = [`${pts}p`, `${reb}r`, `${ast}a`];
+            if (stl >= 8) parts.push(`${stl}s`);
+            if (blk >= 8) parts.push(`${blk}b`);
+            return parts.join('/');
+        };
+
         if (doubleDigits.length >= 3) {
             watches.push({
                 playerName: name,
                 teamTricode,
-                summary: `${pts}p/${reb}r/${ast}a`,
+                summary: formatTopStats(),
                 milestone: '🏆 TRIPLE-DOUBLE ACHIEVED'
             });
         } else if (doubleDigits.length === 2 && nearTen.length >= 1) {
@@ -137,10 +151,24 @@ export function checkMilestoneWatches(players: any[], teamTricode: string): Mile
                 watches.push({
                     playerName: name,
                     teamTricode,
-                    summary: `${pts}p/${reb}r/${ast}a`,
+                    summary: formatTopStats(),
                     milestone: `🎯 ${diff} ${need.name} away from Triple-Double`
                 });
             }
+        } else if (pts >= 50) {
+            watches.push({
+                playerName: name,
+                teamTricode,
+                summary: `${pts} PTS`,
+                milestone: '🔥 50+ PT EXPLOSION'
+            });
+        } else if (pts >= 40) {
+            watches.push({
+                playerName: name,
+                teamTricode,
+                summary: `${pts} PTS`,
+                milestone: `🔥 40+ PT GAME (${50 - pts} to 50)`
+            });
         } else if (pts >= 35) {
             watches.push({
                 playerName: name,

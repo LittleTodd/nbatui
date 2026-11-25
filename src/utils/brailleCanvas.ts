@@ -49,6 +49,9 @@ export class BrailleCanvas {
     }
 
     drawLine(x0: number, y0: number, x1: number, y1: number): void {
+        if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) {
+            return;
+        }
         x0 = Math.round(x0);
         y0 = Math.round(y0);
         x1 = Math.round(x1);
@@ -59,8 +62,9 @@ export class BrailleCanvas {
         const sx = x0 < x1 ? 1 : -1;
         const sy = y0 < y1 ? 1 : -1;
         let err = dx - dy;
+        const maxSteps = dx + dy + 1;
 
-        while (true) {
+        for (let step = 0; step <= maxSteps; step++) {
             this.setPixel(x0, y0);
             if (x0 === x1 && y0 === y1) break;
             const e2 = 2 * err;
@@ -76,6 +80,9 @@ export class BrailleCanvas {
     }
 
     drawRect(x: number, y: number, w: number, h: number): void {
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h)) {
+            return;
+        }
         this.drawLine(x, y, x + w, y);
         this.drawLine(x + w, y, x + w, y + h);
         this.drawLine(x + w, y + h, x, y + h);
@@ -83,9 +90,13 @@ export class BrailleCanvas {
     }
 
     drawCircle(cx: number, cy: number, radius: number): void {
+        if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius) || radius < 0) {
+            return;
+        }
+        const r = Math.round(radius);
         let x = 0;
-        let y = Math.round(radius);
-        let d = 3 - 2 * radius;
+        let y = r;
+        let d = 3 - 2 * r;
 
         const plot = (px: number, py: number) => {
             this.setPixel(cx + px, cy + py);
@@ -112,11 +123,27 @@ export class BrailleCanvas {
     }
 
     drawArc(cx: number, cy: number, radius: number, startAngle: number, endAngle: number, stepDeg: number = 2): void {
-        for (let angle = startAngle; angle <= endAngle; angle += stepDeg) {
+        if (
+            !Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius) ||
+            !Number.isFinite(startAngle) || !Number.isFinite(endAngle) ||
+            !Number.isFinite(stepDeg) || radius < 0 || stepDeg <= 0
+        ) {
+            return;
+        }
+        const [from, to] = startAngle <= endAngle ? [startAngle, endAngle] : [endAngle, startAngle];
+        let prevX: number | null = null;
+        let prevY: number | null = null;
+        for (let angle = from; angle <= to; angle += stepDeg) {
             const rad = (angle * Math.PI) / 180;
             const px = cx + radius * Math.cos(rad);
             const py = cy + radius * Math.sin(rad);
-            this.setPixel(px, py);
+            if (prevX !== null && prevY !== null) {
+                this.drawLine(prevX, prevY, px, py);
+            } else {
+                this.setPixel(px, py);
+            }
+            prevX = px;
+            prevY = py;
         }
     }
 
