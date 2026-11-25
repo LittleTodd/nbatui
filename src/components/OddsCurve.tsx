@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { fetchTokenHistory, type PricePoint } from '../services/apiClient.js';
 import { LeadTrackerChart } from './charts/LeadTrackerChart.js';
 import { getChartColor, detectLightBackground, getContrastRatio, TEAM_TEXT_COLORS } from '../data/teamColors.js';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 
 interface OddsCurveProps {
     clobId: string;
@@ -87,6 +88,9 @@ export const OddsCurve: React.FC<OddsCurveProps> = ({ clobId, teamTricode, oppTr
         else return <Text dimColor>No valid data points.</Text>;
     }
 
+    const { columns: termWidth } = useTerminalSize();
+    const chartWidth = Math.max(30, Math.min(72, termWidth - 18));
+
     return (
         <Box flexDirection="column" marginTop={1} width="100%" alignItems="center">
             <Box justifyContent="center" marginBottom={1}>
@@ -100,7 +104,7 @@ export const OddsCurve: React.FC<OddsCurveProps> = ({ clobId, teamTricode, oppTr
                 oppColor={oppColor}
                 teamLabel={teamTricode}
                 oppLabel={oppTricode || 'OPP'}
-                width={80}
+                width={chartWidth}
             />
         </Box>
     );
