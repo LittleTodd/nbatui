@@ -371,6 +371,9 @@ export interface PlayByPlayAction {
     shotDistance?: number;
     x?: number;
     y?: number;
+    xLegacy?: number;
+    yLegacy?: number;
+    side?: string;
     pointsTotal?: number;
 }
 
