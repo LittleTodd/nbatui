@@ -26,6 +26,15 @@ cd "$PROJECT_ROOT/data-service"
 uvicorn main:app --reload --port 8765 >> backend.log 2>&1 &
 DATA_SERVICE_PID=$!
 
+# Register cleanup trap immediately so Ctrl+C or non-zero exits never leak uvicorn
+cleanup() {
+    if [ -n "${DATA_SERVICE_PID:-}" ]; then
+        kill "$DATA_SERVICE_PID" 2>/dev/null || true
+        DATA_SERVICE_PID=""
+    fi
+}
+trap cleanup SIGINT SIGTERM EXIT
+
 # Wait for service to be ready
 echo "⏳ Waiting for Data Service..."
 sleep 3
@@ -35,7 +44,6 @@ if curl -s http://localhost:8765/health > /dev/null; then
     echo "✅ Data Service is ready!"
 else
     echo "❌ Data Service failed to start"
-    kill $DATA_SERVICE_PID 2>/dev/null
     exit 1
 fi
 
@@ -43,6 +51,3 @@ fi
 echo "🖥️  Starting TUI..."
 cd "$PROJECT_ROOT"
 bun run start
-
-# Cleanup on exit
-trap "kill $DATA_SERVICE_PID 2>/dev/null" EXIT

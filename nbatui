@@ -33,10 +33,19 @@ fi
 # 3. Start Data Service (Background)
 cd data-service
 source venv/bin/activate
-# Install requirements only if changed (BUG-10 startup optimization)
+# Install requirements only if changed (cross-platform macOS + Linux hash)
 REQ_STAMP="../.agent/setup-python.hash"
-CURRENT_HASH="$(shasum -a 256 requirements.txt 2>/dev/null | awk '{print $1}')"
-[ -z "$CURRENT_HASH" ] && CURRENT_HASH="$(md5 -q requirements.txt 2>/dev/null || true)"
+if command -v shasum >/dev/null 2>&1; then
+    CURRENT_HASH="$(shasum -a 256 requirements.txt 2>/dev/null | awk '{print $1}')"
+elif command -v sha256sum >/dev/null 2>&1; then
+    CURRENT_HASH="$(sha256sum requirements.txt 2>/dev/null | awk '{print $1}')"
+elif command -v md5 >/dev/null 2>&1; then
+    CURRENT_HASH="$(md5 -q requirements.txt 2>/dev/null || true)"
+elif command -v md5sum >/dev/null 2>&1; then
+    CURRENT_HASH="$(md5sum requirements.txt 2>/dev/null | awk '{print $1}')"
+else
+    CURRENT_HASH="fallback-install"
+fi
 PREV_HASH=""
 [ -f "$REQ_STAMP" ] && PREV_HASH="$(cat "$REQ_STAMP" 2>/dev/null || true)"
 
@@ -47,20 +56,28 @@ if [ -n "$CURRENT_HASH" ] && [ "$CURRENT_HASH" != "$PREV_HASH" ]; then
     echo "$CURRENT_HASH" > "$REQ_STAMP"
 fi
 
-# Clean up existing instance on port 8765 if it belongs to nba-data-service
-if lsof -ti:8765 >/dev/null 2>&1; then
+# Clean up existing listener on port 8765 only if it belongs to nba-data-service
+if lsof -tiTCP:8765 -sTCP:LISTEN >/dev/null 2>&1; then
     HEALTH_STATUS=$(curl -s --max-time 1 http://localhost:8765/health 2>/dev/null || true)
     if echo "$HEALTH_STATUS" | grep -q "nba-data-service"; then
-        lsof -ti:8765 | xargs kill -9 2>/dev/null || true
+        lsof -tiTCP:8765 -sTCP:LISTEN | xargs kill -9 2>/dev/null || true
     fi
 fi
-# Start
+
+# Start backend and register cleanup trap immediately so startup interrupts don't leak processes
 python main.py >> backend.log 2>&1 &
 DATA_SERVICE_PID=$!
 cd ..
 
+cleanup() {
+    if [ -n "${DATA_SERVICE_PID:-}" ]; then
+        kill "$DATA_SERVICE_PID" 2>/dev/null || true
+        DATA_SERVICE_PID=""
+    fi
+}
+trap cleanup SIGINT SIGTERM EXIT
+
 # 4. Start Loading Animation Loop + Background Data Prefetch
-# We loop until data service is ready AND data is prefetched
 # Give up after ~30s so a broken backend does not hang the launcher forever
 WAIT_ROUNDS=0
 MAX_WAIT_ROUNDS=60
@@ -69,19 +86,14 @@ while true; do
     if [ "$WAIT_ROUNDS" -gt "$MAX_WAIT_ROUNDS" ]; then
         echo -e "${YELLOW}Data service did not become ready within 30 seconds.${NC}"
         echo -e "${YELLOW}Check backend.log: tail -n 20 data-service/backend.log${NC}"
-        kill $DATA_SERVICE_PID 2>/dev/null || true
         exit 1
     fi
-    # Check if backend is ready first
     if curl -s http://localhost:8765/health > /dev/null 2>&1; then
-        # Backend is up! Start prefetching data in background
         curl -s "http://localhost:8765/games/today" > /dev/null 2>&1 &
         curl -s "http://localhost:8765/api/polymarket/odds" > /dev/null 2>&1 &
         curl -s "http://localhost:8765/games/standings" > /dev/null 2>&1 &
-        
-        # Try to play the loading animation, fallback to text if terminal too small
+
         if [ -f "src/gif/loading.gif" ]; then
-            # Play once (-m 1), very slow (-s very_slow = 1 second per frame)
             TERM_COLS=$(tput cols 2>/dev/null || echo 80)
             [ "$TERM_COLS" -gt 100 ] && TERM_COLS=100
             ANIM_EXIT=0
@@ -96,23 +108,13 @@ while true; do
         fi
         break
     fi
-    
-    # Backend not ready yet, short wait
+
     sleep 0.5
 done
 
 clear
 
 # 5. Run TUI
-cleanup() {
-    echo -e "\n${YELLOW}🛑 Shutting down...${NC}"
-    kill $DATA_SERVICE_PID 2>/dev/null || true
-    exit 0
-}
-trap cleanup SIGINT SIGTERM
-
 echo -e "${GREEN}✅ Ready! Starting TUI...${NC}"
 sleep 0.5
 bun run start
-
-cleanup
