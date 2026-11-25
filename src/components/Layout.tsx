@@ -5,15 +5,22 @@ import Spinner from 'ink-spinner';
 
 interface HeaderProps {
     dateDisplay: string;
+    spoilerFree?: boolean;
+    tzLabel?: string;
 }
 
-export function Header({ dateDisplay }: HeaderProps) {
+export function Header({ dateDisplay, spoilerFree = false, tzLabel }: HeaderProps) {
     return (
         <Box justifyContent="center" flexDirection="column" alignItems="center">
-            <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
+            <Box>
+                <Text bold color="cyan">🏀 NBA BATTLE MAP 🏀</Text>
+                {spoilerFree && (
+                    <Text bold backgroundColor="magenta" color="white"> SPOILER-FREE </Text>
+                )}
+            </Box>
             <Box>
                 <Text color="cyan" bold>◀ </Text>
-                <Text bold color="yellow"> 📅 {dateDisplay} </Text>
+                <Text bold color="yellow"> 📅 {dateDisplay}{tzLabel ? ` (${tzLabel})` : ''} </Text>
                 <Text color="cyan" bold> ▶</Text>
             </Box>
         </Box>
@@ -26,16 +33,27 @@ interface FooterProps {
     gamesCount: number;
     warning?: string | null;
     termWidth?: number;
+    lastUpdated?: Date;
+    viewMode?: 'map' | 'list';
+    spoilerFree?: boolean;
     SpinnerComponent?: React.ComponentType<any>;
 }
 
-export function Footer({ connected, loading, gamesCount, warning, termWidth = 100, SpinnerComponent }: FooterProps) {
+export function Footer({
+    connected,
+    loading,
+    gamesCount,
+    warning,
+    termWidth = 100,
+    lastUpdated,
+    viewMode = 'map',
+    spoilerFree = false,
+    SpinnerComponent
+}: FooterProps) {
     const ActiveSpinner = SpinnerComponent || Spinner;
 
-    // Determine connection status display
     const getConnectionStatus = () => {
         if (loading && !connected) {
-            // Still initializing - show connecting state
             return (
                 <Box>
                     <Text color="yellow">● Connecting </Text>
@@ -43,29 +61,29 @@ export function Footer({ connected, loading, gamesCount, warning, termWidth = 10
                 </Box>
             );
         } else if (connected) {
-            return <Text color="green">● Connected</Text>;
+            const ageSec = lastUpdated ? Math.max(0, Math.floor((Date.now() - lastUpdated.getTime()) / 1000)) : null;
+            const freshness = ageSec !== null && ageSec >= 5 ? ` (${ageSec}s ago)` : '';
+            return <Text color="green">● Live{freshness}</Text>;
         } else {
-            return <Text color="red">● Disconnected</Text>;
+            return <Text color="red">● Disconnected ([r] Retry)</Text>;
         }
     };
 
-    // Compact hints based on terminal width to prevent line wrapping and screen jitter
     const isNarrow = termWidth < 105;
-    const isMedium = termWidth >= 105 && termWidth < 125;
+    const isMedium = termWidth >= 105 && termWidth < 130;
+    const viewToggleLabel = viewMode === 'map' ? 'm List' : 'm Map';
 
     const controlsHint = isNarrow
-        ? `${gamesCount}G • ←/→ Date • ↑/↓ Select • s Standings • z Clutch`
+        ? `${gamesCount}G • ←→ Date • ↑↓ Sel • ${viewToggleLabel} • ? Help`
         : isMedium
-            ? `${gamesCount}G • ←/→ Date • ↑/↓ Select • / Search • s Standings • z Clutch`
-            : `${gamesCount} Games • ←/→: Date | ↑/↓: Select | z: Clutch | s: Standings | /: Search`;
+            ? `${gamesCount}G • ←→ Date • ↑↓ Sel • ${viewToggleLabel} • / Search • s Standings • ? Help`
+            : `${gamesCount} Games • ←/→ Date | ↑/↓ Select | ${viewToggleLabel} | s Standings | z Clutch | x ${spoilerFree ? 'Show' : 'Hide'} | / Search | ? Help`;
 
     const actionsHint = isNarrow
-        ? `Enter Detail • r Refresh • q Quit`
-        : isMedium
-            ? `Enter Detail • r Refresh • q Quit`
-            : `Enter: Detail | r: Refresh | q: Quit`;
+        ? `Enter • q Quit`
+        : `Enter: Detail | r: Refresh | q: Quit`;
 
-    const displayWarning = warning ? (warning.length > 24 ? warning.slice(0, 21) + '...' : warning) : null;
+    const displayWarning = warning ? (warning.length > 26 ? warning.slice(0, 23) + '...' : warning) : null;
 
     return (
         <Box width="100%" height={1} justifyContent="space-between" paddingX={1} marginTop={1} flexWrap="nowrap">

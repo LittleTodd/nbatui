@@ -11,7 +11,7 @@ import { setTerminalTitle } from '../utils/terminalTitle.js';
 
 interface ClutchTickerProps {
     games: Game[];
-    onSelectGame?: (gameIndex: number) => void;
+    spoilerFree?: boolean;
 }
 
 interface ClutchEvaluation {
@@ -89,7 +89,7 @@ const EKG_FRAMES = [
     '♥ /\_──/\\/\\────────'
 ];
 
-export function ClutchTicker({ games }: ClutchTickerProps) {
+export function ClutchTicker({ games, spoilerFree = false }: ClutchTickerProps) {
     const [frameIndex, setFrameIndex] = useState(0);
 
     // Find the single highest-leverage game right now
@@ -111,16 +111,20 @@ export function ClutchTicker({ games }: ClutchTickerProps) {
 
     // Animate EKG heartbeat
     useEffect(() => {
-        if (!topClutch) return;
+        if (!topClutch || spoilerFree) return;
         const speed = topClutch.leverageScore >= 85 ? 180 : 320;
         const timer = setInterval(() => {
             setFrameIndex(f => (f + 1) % EKG_FRAMES.length);
         }, speed);
         return () => clearInterval(timer);
-    }, [topClutch]);
+    }, [topClutch, spoilerFree]);
 
-    // Update Terminal Tab/Window Title
+    // Update Terminal Tab/Window Title (respects spoilerFree mode)
     useEffect(() => {
+        if (spoilerFree) {
+            setTerminalTitle('🏀 NBA-TUI (Spoiler-Free)');
+            return;
+        }
         if (topClutch) {
             const g = topClutch.game;
             const periodStr = g.period > 4 ? `OT${g.period - 4}` : `Q${g.period}`;
@@ -131,12 +135,12 @@ export function ClutchTicker({ games }: ClutchTickerProps) {
             if (liveGames.length > 0) {
                 setTerminalTitle(`🏀 NBA-TUI (${liveGames.length} Live Games)`);
             } else {
-                setTerminalTitle(`🏀 NBA-TUI (Terminal NBA Viewer)`);
+                setTerminalTitle('🏀 NBA-TUI (Terminal NBA Viewer)');
             }
         }
-    }, [topClutch, games]);
+    }, [topClutch, games, spoilerFree]);
 
-    if (!topClutch) return null;
+    if (!topClutch || spoilerFree) return null;
 
     const g = topClutch.game;
     const periodStr = g.period > 4 ? `OT${g.period - 4}` : `Q${g.period}`;
@@ -153,7 +157,7 @@ export function ClutchTicker({ games }: ClutchTickerProps) {
         >
             <Box>
                 <Text color="red" bold>{EKG_FRAMES[frameIndex]} </Text>
-                <Text bold color="white">
+                <Text bold>
                     {g.awayTeam.teamTricode} {g.awayTeam.score} - {g.homeTeam.score} {g.homeTeam.teamTricode}
                 </Text>
                 <Text color="cyan"> [{periodStr} {clockClean}] </Text>

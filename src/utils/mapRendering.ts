@@ -13,65 +13,59 @@ export function createGameMarker(
     isSelected: boolean,
     isHighlighted: boolean = false,
     odds?: GameOdds,
-    isCrunchTime: boolean = false
+    isCrunchTime: boolean = false,
+    spoilerFree: boolean = false
 ): string {
     const isLive = game.gameStatus === 2;
     const isFuture = game.gameStatus === 1;
 
     const away = game.awayTeam.teamTricode;
     const home = game.homeTeam.teamTricode;
-    const awayScore = game.awayTeam.score;
-    const homeScore = game.homeTeam.score;
+    const awayScore = spoilerFree ? '?' : game.awayTeam.score;
+    const homeScore = spoilerFree ? '?' : game.homeTeam.score;
 
     let content = '';
 
     if (isFuture) {
-        content = `${away}-${home}`;
-        // Hover Stat: Odds
-        if (isSelected && odds) {
-            const spread = odds.homeOdds < 0 ? odds.homeOdds : `+${odds.homeOdds}`; // Simplified logic, usually we use spread from Odds object, but here we only have probabilities in some versions?
-            // Actually GameOdds has homeOdds / awayOdds which might be probabilities or moneyline.
-            // Let's assume we want to show probability for now or simple spread if available.
-            // Our GameOdds interface has 'awayOdds', 'homeOdds'.
-            // Let's show "52%" probability?
+        content = ` ${away} - ${home} `;
+        if (isSelected && odds && !spoilerFree) {
             const prob = Math.round(Math.max(odds.homeProb, odds.awayProb));
             const fav = odds.homeProb > odds.awayProb ? home : away;
-            content += ` (${fav} ${prob}%)`;
+            content += `(${fav} ${prob}%)`;
         }
     } else {
-        content = `${away} ${awayScore}-${homeScore} ${home}`;
-        // Hover Stat: Detailed Status
+        content = ` ${away} ${awayScore}-${homeScore} ${home} `;
         if (isSelected && isLive) {
-            content += ` [${game.gameStatusText}]`;
+            content += `[${game.gameStatusText}]`;
         }
     }
 
-    // Add live indicator prefix if game is live
-    const livePrefix = isLive ? '●● ' : '';
+    // Use 1-column prefixes so marker.length matches terminal cell width
+    const livePrefix = isLive ? '● ' : '';
 
     if (isSelected) {
-        return `${livePrefix}[${content}]`;
+        return `▶ ${livePrefix}[${content}]`;
     } else if (isHighlighted) {
         return `${livePrefix}»${content}«`;
     } else if (isCrunchTime) {
-        return `❗ ${content}`;
+        return `! ${content}`;
     } else if (isLive) {
-        return `●● ${content}`;
+        return `● ${content}`;
     } else {
         return content;
     }
 }
 
-// Helper to check if game matches filter
+// Helper to check if game matches filter (unified .includes() with Enter search selection)
 export function checkGameMatchesFilter(game: Game, filter: string): boolean {
     if (!filter) return false;
     const lowerFilter = filter.toLowerCase();
-    return game.homeTeam.teamTricode.toLowerCase().startsWith(lowerFilter) ||
-        game.homeTeam.teamCity.toLowerCase().startsWith(lowerFilter) ||
-        game.homeTeam.teamName.toLowerCase().startsWith(lowerFilter) ||
-        game.awayTeam.teamTricode.toLowerCase().startsWith(lowerFilter) ||
-        game.awayTeam.teamCity.toLowerCase().startsWith(lowerFilter) ||
-        game.awayTeam.teamName.toLowerCase().startsWith(lowerFilter);
+    return game.homeTeam.teamTricode.toLowerCase().includes(lowerFilter) ||
+        game.homeTeam.teamCity.toLowerCase().includes(lowerFilter) ||
+        game.homeTeam.teamName.toLowerCase().includes(lowerFilter) ||
+        game.awayTeam.teamTricode.toLowerCase().includes(lowerFilter) ||
+        game.awayTeam.teamCity.toLowerCase().includes(lowerFilter) ||
+        game.awayTeam.teamName.toLowerCase().includes(lowerFilter);
 }
 
 export interface GameColor {
@@ -89,54 +83,44 @@ export function embedGamesInMap(
     games: Game[],
     selectedIndex: number,
     termWidth: number,
-    searchFilter: string = ''
+    searchFilter: string = '',
+    spoilerFree: boolean = false
 ): { lines: string[]; gameColors: Map<number, GameColor> } {
     const lines = mapLines.map(l => l.padEnd(termWidth, ' ').slice(0, termWidth));
     const gameColors = new Map<number, GameColor>();
 
     const maxHeight = lines.length;
     const maxWidth = termWidth;
+    if (maxHeight === 0) return { lines, gameColors };
 
     const gamesWithPos = games.map((game, idx) => {
         const pos = getTeamPosition(game.homeTeam.teamTricode);
         const isSelected = idx === selectedIndex;
-        // Note: We duplicate the filter logic here essentially by calling the helper, 
-        // passing the full game object is safest.
-        // We need to ensure searching covers city/name too, previously checkGameMatchesFilter used tricode only in some versions?
-        // Let's ensure checkGameMatchesFilter is robust (I updated it above to include city/name).
         const isHighlighted = checkGameMatchesFilter(game, searchFilter);
 
-        // Crunch Time Logic: 4th Qtr or OT, score diff <= 5, AND clock < 3 minutes
         let isCrunchTime = false;
         if (game.gameStatus === 2 && game.period >= 4 && Math.abs(game.homeTeam.score - game.awayTeam.score) <= 5) {
-            // Check clock: usually in format "PT11M05.00S" or "11:05"
-            // If format is PT...M...S, parse minutes
             if (game.gameClock) {
                 const ptMatch = game.gameClock.match(/PT(\d+)M/);
                 if (ptMatch) {
                     const minutes = parseInt(ptMatch[1] ?? '0', 10);
                     if (minutes < 3) isCrunchTime = true;
                 } else if (game.gameClock.includes(':')) {
-                    // "MM:SS" format
                     const parts = game.gameClock.split(':');
                     const minutes = parseInt(parts[0] ?? '0', 10);
                     if (minutes < 3) isCrunchTime = true;
-                } else {
-                    // Fallback: if we can't parse but it's late game, assume true if period > 4 (OT)
-                    // For Q4, we default to false if we can't read clock to avoid flashing all quarter
-                    if (game.period > 4) isCrunchTime = true;
+                } else if (game.period > 4) {
+                    isCrunchTime = true;
                 }
             }
         }
 
-        // Pass isCrunchTime to marker builder if we want it in text, 
-        // OR just keep it in GameColor for component level styling.
-        // Let's add a "!" prefix in text if crunch time?
-        const marker = createGameMarker(game, isSelected, isHighlighted, undefined, isCrunchTime);
+        const marker = createGameMarker(game, isSelected, isHighlighted, undefined, isCrunchTime, spoilerFree);
 
         return {
             game,
             idx,
+            marker,
             row: percentToChar(pos.y, maxHeight),
             col: percentToChar(pos.x, maxWidth),
             markerLen: marker.length,
@@ -152,9 +136,8 @@ export function embedGamesInMap(
     const occupiedRanges = new Map<number, Array<{ start: number; end: number }>>();
 
     for (const gamePos of gamesWithPos) {
-        const { idx, markerLen, isLive, isSelected, isHighlighted, isCrunchTime } = gamePos;
+        const { idx, marker, markerLen, isLive, isSelected, isHighlighted, isCrunchTime } = gamePos;
         let { row, col } = gamePos;
-        const marker = createGameMarker(gamePos.game, isSelected, isHighlighted, undefined, isCrunchTime);
 
         col = Math.max(0, Math.min(col, maxWidth - markerLen));
         row = Math.max(0, Math.min(row, maxHeight - 1));

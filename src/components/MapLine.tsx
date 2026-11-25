@@ -15,9 +15,10 @@ interface MapLineProps {
     odds: Record<string, GameOdds>;
     liveDotVisible: boolean;
     waveFrame?: number;  // Animation frame for wave effect (0-3)
+    spoilerFree?: boolean;
 }
 
-function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisible, waveFrame = 0 }: MapLineProps) {
+function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisible, waveFrame = 0, spoilerFree = false }: MapLineProps) {
     const markersOnRow: Array<{ col: number; length: number; isLive: boolean; isSelected: boolean; isHighlighted: boolean; gameIdx: number; content: string; isCrunchTime?: boolean }> = [];
 
     gameColors.forEach((pos, gameIdx) => {
@@ -27,7 +28,7 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
             const gameDate = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10) || '';
             const gameOdds = findGameOdds(odds, game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
 
-            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds, pos.isCrunchTime);
+            const marker = createGameMarker(game, pos.isSelected, pos.isHighlighted, gameOdds, pos.isCrunchTime, spoilerFree);
             markersOnRow.push({
                 col: pos.col,
                 length: marker.length,
@@ -170,27 +171,29 @@ function MapLineComponent({ line, rowIndex, gameColors, games, odds, liveDotVisi
         };
 
         let displayContent = rawContent;
-        if (marker.isLive && rawContent.startsWith('●●')) {
+        if (marker.isLive) {
             const dot = liveDotVisible ? '●' : '○';
-            displayContent = dot + rawContent.slice(2);
+            displayContent = displayContent.replace('●', dot);
         }
 
-        const parts1 = displayContent.split(away);
+        const paddedAway = ` ${away} `;
+        const paddedHome = ` ${home} `;
+        const parts1 = displayContent.split(paddedAway);
 
         if (parts1.length >= 2) {
             const preAway = parts1[0] || '';
-            const postAway = parts1.slice(1).join(away);
+            const postAway = parts1.slice(1).join(paddedAway);
 
             markerElements.push(renderText(preAway, `pre-${i}`));
-            markerElements.push(renderText(` ${away} `, `away-${i}`, awayColor, away));
+            markerElements.push(renderText(paddedAway, `away-${i}`, awayColor, away));
 
-            const parts2 = postAway.split(home);
+            const parts2 = postAway.split(paddedHome);
             if (parts2.length >= 2) {
                 const mid = parts2[0] || '';
-                const postHome = parts2.slice(1).join(home);
+                const postHome = parts2.slice(1).join(paddedHome);
 
                 markerElements.push(renderText(mid, `mid-${i}`));
-                markerElements.push(renderText(` ${home} `, `home-${i}`, homeColor, home));
+                markerElements.push(renderText(paddedHome, `home-${i}`, homeColor, home));
                 markerElements.push(renderText(postHome, `post-${i}`));
             } else {
                 markerElements.push(renderText(postAway, `rest-${i}`));
@@ -293,7 +296,10 @@ export const MapLine = memo(MapLineComponent, (prev, next) => {
         if (hasLiveGame) return false;
     }
 
-    // 5. Wave Frame Check - Always re-render on wave frame change for coastal animation
+    // 5. Spoiler-free changes
+    if (prev.spoilerFree !== next.spoilerFree) return false;
+
+    // 6. Wave Frame Check
     if (prev.waveFrame !== next.waveFrame) return false;
 
     return true;

@@ -10,40 +10,46 @@ interface GameDetailProps {
     odds?: GameOdds;
     currentIndex: number;
     totalGames: number;
+    spoilerFree?: boolean;
 }
 
 /**
  * Determine game type based on date
  * - Preseason: Before ~Oct 20
  * - Regular Season: Oct 20 - mid April
- * - Playoffs: mid April onwards
+ * - Playoffs: mid April - June
+ * - Summer League: July
  */
 function getGameTypeLabel(gameTimeUTC: string): { label: string; color: string } {
-    if (!gameTimeUTC) return { label: 'Regular Season', color: 'gray' };
+    if (!gameTimeUTC) return { label: '🏀 Regular Season', color: 'gray' };
 
     const gameDate = new Date(gameTimeUTC);
-    const month = gameDate.getMonth(); // 0-indexed
+    if (Number.isNaN(gameDate.getTime())) {
+        return { label: '🏀 Regular Season', color: 'gray' };
+    }
+    const month = gameDate.getMonth(); // 0-indexed (0=Jan ... 3=Apr ... 9=Oct)
     const day = gameDate.getDate();
 
-    // October (month 9) before day 20 = Preseason
     if (month === 9 && day < 20) {
         return { label: '🏋️ Preseason', color: 'yellow' };
     }
 
-    // April (month 3) after day 15, or May onwards = Playoffs
-    if ((month === 3 && day >= 15) || month >= 4) {
+    if ((month === 3 && day >= 15) || (month >= 4 && month <= 5)) {
         return { label: '🏆 Playoffs', color: 'magenta' };
+    }
+
+    if (month === 6) {
+        return { label: '☀️ Summer League', color: 'cyan' };
     }
 
     return { label: '🏀 Regular Season', color: 'gray' };
 }
 
 // Selected game detail panel
-export function GameDetail({ game, odds, currentIndex, totalGames }: GameDetailProps) {
-    const { text: statusText, isLive, isFinal } = getGameStatusInfo(game);
+export function GameDetail({ game, odds, currentIndex, totalGames, spoilerFree = false }: GameDetailProps) {
+    const { text: statusText, isLive } = getGameStatusInfo(game);
     const isFuture = game.gameStatus === 1;
 
-    // Blinking animation for live indicator
     const [dotVisible, setDotVisible] = useState(true);
     useEffect(() => {
         if (!isLive) return;
@@ -53,12 +59,14 @@ export function GameDetail({ game, odds, currentIndex, totalGames }: GameDetailP
         return () => clearInterval(timer);
     }, [isLive]);
 
-    // Game type label
     const { label: gameTypeLabel, color: gameTypeColor } = getGameTypeLabel(game.gameTimeUTC);
-
-    // Border color: use home team color
     const borderColor = TEAM_BG_COLORS[game.homeTeam.teamTricode] || 'cyan';
 
+    const scoreDisplay = isFuture
+        ? 'vs'
+        : spoilerFree
+            ? '? - ?'
+            : `${game.awayTeam.score} - ${game.homeTeam.score}`;
 
     return (
         <Box
@@ -69,16 +77,11 @@ export function GameDetail({ game, odds, currentIndex, totalGames }: GameDetailP
             justifyContent="center"
         >
             <Box flexDirection="column" alignItems="center">
-                {/* Pagination Indicator */}
                 <Box marginBottom={0}>
                     <Text dimColor>◀ </Text>
                     <Text bold color="yellow">{currentIndex + 1}</Text>
                     <Text dimColor>/{totalGames}</Text>
-                    <Text dimColor> ▶</Text>
-                </Box>
-
-                {/* Game Type Label */}
-                <Box marginBottom={1}>
+                    <Text dimColor> ▶  </Text>
                     <Text dimColor color={gameTypeColor}>{gameTypeLabel}</Text>
                 </Box>
 
@@ -87,14 +90,17 @@ export function GameDetail({ game, odds, currentIndex, totalGames }: GameDetailP
                 </Text>
                 <Box gap={2}>
                     <Text bold>{game.awayTeam.teamTricode}</Text>
-                    <Text bold color="white" backgroundColor={isLive ? "green" : undefined}>
-                        {game.awayTeam.score} - {game.homeTeam.score}
+                    <Text
+                        bold
+                        color={isLive && !spoilerFree ? 'white' : undefined}
+                        backgroundColor={isLive && !spoilerFree ? 'green' : undefined}
+                    >
+                        {' '}{scoreDisplay}{' '}
                     </Text>
                     <Text bold>{game.homeTeam.teamTricode}</Text>
                 </Box>
 
-                {/* Win Probability Bar for future games */}
-                {isFuture && odds && odds.homeProb > 0 && (
+                {isFuture && !spoilerFree && odds && odds.homeProb > 0 && (
                     <Box marginTop={1}>
                         <WinProbabilityBar
                             awayProb={odds.awayProb}
@@ -104,8 +110,8 @@ export function GameDetail({ game, odds, currentIndex, totalGames }: GameDetailP
                         />
                     </Box>
                 )}
-                <Text color={isLive ? "green" : "gray"}>
-                    {isLive && (dotVisible ? "● " : "○ ")}{isLive && "LIVE "}{statusText}
+                <Text color={isLive ? 'green' : 'gray'}>
+                    {isLive && (dotVisible ? '● ' : '○ ')}{isLive && 'LIVE '}{statusText}
                 </Text>
             </Box>
         </Box>
