@@ -58,11 +58,15 @@ def _date_cache_key(date: str) -> str:
 
 
 def _ensure_tables_and_schema(conn: sqlite3.Connection) -> None:
-    """Ensure tables and schema migration exist for the current database."""
+    """Ensure tables, WAL mode, and schema migration exist for the current database."""
     global _schema_checked
     with _init_lock:
         if CACHE_DB_PATH in _initialized_dbs and _schema_checked:
             return
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.DatabaseError:
+            pass
 
         conn.execute('''
             CREATE TABLE IF NOT EXISTS games_cache (
@@ -125,10 +129,9 @@ def init_db() -> None:
 
 
 def _get_connection() -> sqlite3.Connection:
-    """Get a raw SQLite connection. Lazily initializes tables on first access."""
+    """Get a raw SQLite connection. Lazily initializes tables & WAL mode once on first access."""
     conn = sqlite3.connect(CACHE_DB_PATH, timeout=10)
     try:
-        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
     except sqlite3.DatabaseError:
         pass

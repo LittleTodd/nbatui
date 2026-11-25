@@ -142,12 +142,15 @@ def get_game_score_curve(game_id: str):
 
         # Extract scoring events (when score changes)
         points = []
-        last_home = "0"
-        last_away = "0"
+        last_home: int | None = None
+        last_away: int | None = None
 
         for action in actions:
-            home = action.get('scoreHome', '0') or '0'
-            away = action.get('scoreAway', '0') or '0'
+            try:
+                home = int(action.get('scoreHome') or 0)
+                away = int(action.get('scoreAway') or 0)
+            except (ValueError, TypeError):
+                continue
 
             # Only add when score changes
             if home != last_home or away != last_away:
@@ -164,19 +167,28 @@ def get_game_score_curve(game_id: str):
 
                 points.append({
                     "time": round(overall_progress, 1),
-                    "homeScore": int(home),
-                    "awayScore": int(away),
+                    "homeScore": home,
+                    "awayScore": away,
                     "period": period
                 })
 
                 last_home = home
                 last_away = away
-        
-        # Sample to max 50 points for performance
-        if len(points) > 50:
-            step = len(points) // 50
-            points = points[::step] + [points[-1]]  # Always include final score
-        
+
+        # Sample evenly to at most 50 unique points (always preserving first and final score)
+        max_points = 50
+        if len(points) > max_points:
+            n = len(points)
+            indices = [round(i * (n - 1) / (max_points - 1)) for i in range(max_points)]
+            # Deduplicate while preserving order
+            seen = set()
+            sampled = []
+            for idx in indices:
+                if idx not in seen:
+                    seen.add(idx)
+                    sampled.append(points[idx])
+            points = sampled
+
         return {
             "points": points,
             "homeTeam": data.get('homeTeam', {}).get('teamTricode', ''),
@@ -207,8 +219,9 @@ def get_team_gamelog(team_id: int, last_n: int = 10):
     Get team's recent game log.
     Returns last N games with stats.
     """
+    clamped_n = max(1, min(last_n, 82))
     try:
-        data = nba_service.get_team_gamelog(team_id, last_n=last_n)
+        data = nba_service.get_team_gamelog(team_id, last_n=clamped_n)
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
