@@ -1,7 +1,7 @@
 
 import { create } from 'zustand';
-import { type Game, type GameOdds, fetchGamesByDate, checkHealth, fetchPolymarketOdds, consumeApiDiagnostics, type ApiClientDiagnostic } from '../services/apiClient.js';
-import { format, subDays, isSameDay } from 'date-fns';
+import { type Game, type GameOdds, fetchGamesByDate, checkHealth, fetchPolymarketOdds, consumeApiDiagnostics } from '../services/apiClient.js';
+import { format, subDays } from 'date-fns';
 import { getTeamPosition } from '../data/teamCoords.js';
 
 interface GameState {
@@ -14,6 +14,7 @@ interface GameState {
     lastUpdated: Date;
     dataWarning: string | null;
     dataWarningDetails: string[];
+    spoilerFree: boolean;
 
     // Actions
     setGames: (games: Game[]) => void;
@@ -21,6 +22,7 @@ interface GameState {
     setSelectedIndex: (index: number) => void;
     setLoading: (loading: boolean) => void;
     setDataWarning: (warning: string | null, details?: string[]) => void;
+    toggleSpoilerFree: () => void;
     checkConnection: () => Promise<void>;
     loadGamesForDate: (date: Date, isBackgroundRefresh?: boolean) => Promise<void>;
     refreshGames: () => Promise<void>;
@@ -28,55 +30,66 @@ interface GameState {
     changeDate: (direction: 'prev' | 'next') => void;
 }
 
-// Track request sequence to prevent out-of-order race conditions when switching dates rapidly (BUG-12)
+// Track request sequence to prevent out-of-order race conditions when switching dates rapidly
 let activeLoadSequence = 0;
+
+function jsonEqual(a: unknown, b: unknown): boolean {
+    try {
+        return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+        return false;
+    }
+}
 
 export const useGameStore = create<GameState>((set, get) => ({
     games: [],
     odds: {},
-    currentDate: new Date(), // Use local date; loadGamesForDate handles ET timezone conversion
+    currentDate: new Date(),
     selectedIndex: 0,
     connected: false,
     loading: true,
     lastUpdated: new Date(),
     dataWarning: null,
     dataWarningDetails: [],
+    spoilerFree: false,
 
     setGames: (games) => set({ games }),
     setCurrentDate: (date) => set({ currentDate: date }),
     setSelectedIndex: (index) => set({ selectedIndex: index }),
     setLoading: (loading) => set({ loading }),
     setDataWarning: (warning, details = []) => set({ dataWarning: warning, dataWarningDetails: details }),
+    toggleSpoilerFree: () => set((state) => ({ spoilerFree: !state.spoilerFree })),
 
     checkConnection: async () => {
         const isHealthy = await checkHealth();
-        set({ connected: isHealthy });
+        const prev = get();
 
-        const diagnostics = consumeApiDiagnostics();
-        if (diagnostics.length > 0) {
-            const latest = diagnostics[diagnostics.length - 1];
-            const recent = diagnostics.slice(-3).map(d => `${d.operation} (${d.message})`);
-            if (latest) {
-                set({
-                    dataWarning: `Connection issue: ${latest.message}`,
-                    dataWarningDetails: recent
-                });
+        if (isHealthy) {
+            if (!prev.connected) {
+                set({ connected: true });
             }
             return;
+        }
+
+        const nextWarning = 'Connection issue: data-service unreachable';
+        if (prev.connected || prev.dataWarning !== nextWarning) {
+            set({
+                connected: false,
+                dataWarning: nextWarning,
+                dataWarningDetails: ['Health check failed']
+            });
         }
     },
 
     loadGamesForDate: async (date: Date, isBackgroundRefresh = false) => {
         const requestSeq = ++activeLoadSequence;
         if (!isBackgroundRefresh) {
-            set({ loading: true });
+            // Keep currentDate synchronized whenever a non-background load (e.g. 't' Jump to Today) is triggered
+            set({ loading: true, currentDate: date });
         }
 
-        // Use local date directly - backend handles timezone conversion
-        // Format: YYYY-MM-DD in user's local timezone
         const localDateStr = format(date, 'yyyy-MM-dd');
 
-        // Check if the date is in the past (skip odds for past dates)
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const startOfYesterday = subDays(startOfToday, 1);
@@ -97,56 +110,82 @@ export const useGameStore = create<GameState>((set, get) => ({
                 ]);
             }
 
-            // Discard stale response if another load request was triggered while fetching
             if (requestSeq !== activeLoadSequence) {
                 return;
             }
 
-            let newSelectedIndex = 0;
-            const currentSelectedIndex = get().selectedIndex;
-            // Determine the new selected index
-            if (isBackgroundRefresh) {
-                // Try to persist the currently selected game
-                const currentGames = get().games;
-                const selectedGameId = currentGames[currentSelectedIndex]?.gameId;
+            const prev = get();
+            const diagnostics = consumeApiDiagnostics();
+            const gamesFetchFailed = diagnostics.some(d => d.operation === 'fetchGamesByDate');
 
+            // Preserve existing games on transient background refresh failure so active Detail View is never unmounted/deadlocked
+            if (isBackgroundRefresh && gamesFetchFailed && gamesData.length === 0 && prev.games.length > 0) {
+                const latest = diagnostics[diagnostics.length - 1];
+                const recent = diagnostics.slice(-3).map(d => `${d.operation} (${d.message})`);
+                const nextWarning = latest ? `Stale data: ${latest.operation}` : 'Stale data: refresh failed';
+                if (prev.loading || prev.dataWarning !== nextWarning) {
+                    set({
+                        loading: false,
+                        dataWarning: nextWarning,
+                        dataWarningDetails: recent
+                    });
+                }
+                return;
+            }
+
+            let newSelectedIndex = 0;
+            const currentSelectedIndex = prev.selectedIndex;
+            if (isBackgroundRefresh) {
+                const selectedGameId = prev.games[currentSelectedIndex]?.gameId;
                 if (selectedGameId) {
                     const foundIndex = gamesData.findIndex(g => g.gameId === selectedGameId);
                     if (foundIndex !== -1) {
                         newSelectedIndex = foundIndex;
                     } else {
-                        // Game no longer exists (rare), keep index bounded
                         newSelectedIndex = Math.min(currentSelectedIndex, Math.max(0, gamesData.length - 1));
                     }
                 } else {
                     newSelectedIndex = Math.min(currentSelectedIndex, Math.max(0, gamesData.length - 1));
                 }
             } else {
-                // New date or manual load, reset to 0
                 newSelectedIndex = 0;
             }
 
-            set({
-                games: gamesData,
-                odds: oddsData,
-                lastUpdated: new Date(),
-                loading: false,
-                selectedIndex: newSelectedIndex
-            });
-
-            const diagnostics = consumeApiDiagnostics();
+            // Compute next warning state so everything commits in ONE atomic set() call
+            let nextWarning: string | null = prev.dataWarning;
+            let nextWarningDetails: string[] = prev.dataWarningDetails;
             if (diagnostics.length > 0) {
                 const latest = diagnostics[diagnostics.length - 1];
                 const recent = diagnostics.slice(-3).map(d => `${d.operation} (${d.message})`);
                 if (latest) {
-                    set({
-                        dataWarning: `Data degraded: ${latest.operation}`,
-                        dataWarningDetails: recent
-                    });
+                    nextWarning = `Data degraded: ${latest.operation}`;
+                    nextWarningDetails = recent;
                 }
-            } else {
-                set({ dataWarning: null, dataWarningDetails: [] });
+            } else if (prev.connected) {
+                nextWarning = null;
+                nextWarningDetails = [];
             }
+
+            // On background refresh, preserve object references and skip set() entirely if nothing changed
+            // to prevent unnecessary full-screen Ink re-renders / flicker.
+            const gamesUnchanged = isBackgroundRefresh && jsonEqual(prev.games, gamesData);
+            const oddsUnchanged = isBackgroundRefresh && jsonEqual(prev.odds, oddsData);
+            const indexUnchanged = newSelectedIndex === prev.selectedIndex;
+            const warningUnchanged = nextWarning === prev.dataWarning;
+
+            if (isBackgroundRefresh && gamesUnchanged && oddsUnchanged && indexUnchanged && warningUnchanged && !prev.loading) {
+                return;
+            }
+
+            set({
+                games: gamesUnchanged ? prev.games : gamesData,
+                odds: oddsUnchanged ? prev.odds : oddsData,
+                lastUpdated: new Date(),
+                loading: false,
+                selectedIndex: newSelectedIndex,
+                dataWarning: nextWarning,
+                dataWarningDetails: nextWarningDetails,
+            });
         } catch (error) {
             if (requestSeq !== activeLoadSequence) {
                 return;
@@ -162,35 +201,29 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     refreshGames: async () => {
         const { currentDate, loadGamesForDate, checkConnection } = get();
-        await loadGamesForDate(currentDate, true);
         await checkConnection();
+        await loadGamesForDate(currentDate, true);
     },
 
     moveSelection: (direction) => {
         const { selectedIndex, games } = get();
         if (games.length === 0) return;
 
-        // Sort games by Y coordinate (top to bottom on map)
-        // Using homeTeam's position as the reference
         const sortedByY = [...games].map((game, originalIndex) => ({
             game,
             originalIndex,
             y: getTeamPosition(game.homeTeam.teamTricode).y
         })).sort((a, b) => a.y - b.y);
 
-        // Find current game's position in the sorted list
         const currentSortedIndex = sortedByY.findIndex(g => g.originalIndex === selectedIndex);
 
         let newSortedIndex: number;
         if (direction === 'up') {
-            // Move to game higher on map (lower Y value)
             newSortedIndex = currentSortedIndex > 0 ? currentSortedIndex - 1 : sortedByY.length - 1;
         } else {
-            // Move to game lower on map (higher Y value)
             newSortedIndex = currentSortedIndex < sortedByY.length - 1 ? currentSortedIndex + 1 : 0;
         }
 
-        // Set the new selected index using the original array index
         const newGame = sortedByY[newSortedIndex];
         if (newGame) {
             set({ selectedIndex: newGame.originalIndex });
@@ -205,9 +238,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         } else {
             newDate.setDate(newDate.getDate() + 1);
         }
-        // Changing date triggers useEffect in component usually, but here we might want to trigger load directly
-        // However, standard pattern is to update state and let React effect handle data fetching?
-        // OR we handle it here. Let's start by just setting date, and we'll call loadGamesForDate in a store subscription or component effect.
         set({ currentDate: newDate });
     },
 }));
