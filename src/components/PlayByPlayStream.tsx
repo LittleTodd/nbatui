@@ -248,10 +248,10 @@ export function PlayByPlayStream({
         if (key.downArrow || input === 'j') {
             setScrollOffset(prev => Math.min(Math.max(0, displayActions.length - maxItems), prev + 1));
         }
-        if (key.pageUp || input === 'u') {
+        if (key.pageUp || (key.ctrl && input === 'u')) {
             setScrollOffset(prev => Math.max(0, prev - maxItems));
         }
-        if (key.pageDown || input === 'd') {
+        if (key.pageDown || (key.ctrl && input === 'd')) {
             setScrollOffset(prev => Math.min(Math.max(0, displayActions.length - maxItems), prev + maxItems));
         }
         if (input === 'g') {
@@ -331,7 +331,7 @@ export function PlayByPlayStream({
                     const isScoring = action.shotResult === 'Made' &&
                         (action.actionType === '2pt' || action.actionType === '3pt' || action.actionType === 'freethrow');
 
-                    let descColor = 'white';
+                    let descColor: string | undefined = undefined;
                     if (action.shotResult === 'Made') {
                         descColor = 'green';
                     } else if (action.shotResult === 'Missed') {
@@ -378,34 +378,24 @@ export function PlayByPlayStream({
                                     </Box>
                                 ) : (
                                     <>
-                                        {/* Animated text for live highlight events */}
                                         {(() => {
-                                            // Animation fix: Check if action is part of the latest moment (same period + clock)
-                                            // This ensures we animate even if other events (fouls, subs) happened in the same second and pushed this down
-                                            const newestAction = displayActions[0];
-                                            const isLatestMoment = newestAction &&
-                                                action.period === newestAction.period &&
-                                                action.clock === newestAction.clock;
+                                            const lowerDesc = (action.description || '').toLowerCase();
+                                            const isBuzzer = action.shotResult === 'Made' && parseGameClock(action.clock) === '00:00';
+                                            const badge = isBuzzer
+                                                ? '🚨 BUZZER '
+                                                : action.actionType === 'block'
+                                                    ? '✋ BLK '
+                                                    : action.actionType === 'steal'
+                                                        ? '⚡ STL '
+                                                        : (action.actionType === '2pt' && lowerDesc.includes('dunk'))
+                                                            ? '🔥 DUNK '
+                                                            : '';
 
-                                            const animationType = getAnimationType(action);
-                                            // Animation fix: Stop animations if game is in a break (Halftime, End of Period)
-                                            // This prevents "glitch" or "neon" from playing indefinitely during 15-min halftime
-                                            const isBreak = gameStatusText?.toLowerCase().includes('halftime') ||
-                                                gameStatusText?.toLowerCase().includes('end') ||
-                                                gameStatusText?.toLowerCase().includes('final');
-
-                                            const shouldAnimate = isLive && !isBreak && scrollOffset === 0 && isLatestMoment && animationType !== 'none';
-
-                                            return shouldAnimate ? (
-                                                <AnimatedText
-                                                    text={action.description}
-                                                    animationType={animationType}
-                                                    isActive={true}
-                                                    fallbackColor={descColor}
-                                                    speed={150}
-                                                />
-                                            ) : (
-                                                <Text color={descColor} wrap="truncate-end">{action.description}</Text>
+                                            return (
+                                                <>
+                                                    {badge && <Text bold color="yellow">{badge}</Text>}
+                                                    <Text color={descColor} bold={Boolean(badge)} wrap="truncate-end">{action.description}</Text>
+                                                </>
                                             );
                                         })()}
                                         {action.shotResult === 'Made' && action.actionType === '3pt' && (

@@ -1,7 +1,7 @@
 /**
  * PlayerTradingCard Component
  * 90s NBA Jam Arcade Style ASCII Collectible Trading Card
- * 
+ *
  * Features:
  * - Retro card frame with holographic colors
  * - "HE'S ON FIRE!" heat streak indicator
@@ -20,21 +20,21 @@ export interface TradingCardPlayer {
     position: string;
     teamTricode: string;
     statistics: {
-        points: number;
-        reboundsTotal: number;
-        assists: number;
-        steals: number;
-        blocks: number;
-        turnovers: number;
-        foulsPersonal: number;
-        plusMinusPoints: number;
-        fieldGoalsMade: number;
-        fieldGoalsAttempted: number;
-        threePointersMade: number;
-        threePointersAttempted: number;
-        freeThrowsMade: number;
-        freeThrowsAttempted: number;
-        minutes: string;
+        points?: number;
+        reboundsTotal?: number;
+        assists?: number;
+        steals?: number;
+        blocks?: number;
+        turnovers?: number;
+        foulsPersonal?: number;
+        plusMinusPoints?: number;
+        fieldGoalsMade?: number;
+        fieldGoalsAttempted?: number;
+        threePointersMade?: number;
+        threePointersAttempted?: number;
+        freeThrowsMade?: number;
+        freeThrowsAttempted?: number;
+        minutes?: string;
     };
 }
 
@@ -44,7 +44,9 @@ interface PlayerTradingCardProps {
 }
 
 function renderBar(value: number, max: number = 100, length: number = 10): string {
-    const ratio = Math.max(0, Math.min(1, value / max));
+    const safeVal = Number.isFinite(value) ? value : 0;
+    const safeMax = Number.isFinite(max) && max > 0 ? max : 100;
+    const ratio = Math.max(0, Math.min(1, safeVal / safeMax));
     const filled = Math.round(ratio * length);
     return '█'.repeat(filled) + '░'.repeat(length - filled);
 }
@@ -53,18 +55,41 @@ export function PlayerTradingCard({ player, onClose }: PlayerTradingCardProps) {
     const [copiedToast, setCopiedToast] = useState(false);
     const [flameFrame, setFlameFrame] = useState(0);
 
-    const stats = player.statistics;
-    const teamBg = TEAM_BG_COLORS[player.teamTricode] || '#1D428A';
-    const teamText = TEAM_TEXT_COLORS[player.teamTricode] || '#FFFFFF';
+    // Defensively normalize all fields (NBA Live API frequently omits position/jerseyNum for bench players)
+    const playerName = String(player?.name || 'Player');
+    const jerseyNum = String(player?.jerseyNum ?? '-');
+    const position = String(player?.position || 'N/A');
+    const teamTricode = String(player?.teamTricode || 'NBA');
+
+    const rawStats = player?.statistics || {};
+    const stats = useMemo(() => ({
+        points: Number(rawStats.points) || 0,
+        reboundsTotal: Number(rawStats.reboundsTotal) || 0,
+        assists: Number(rawStats.assists) || 0,
+        steals: Number(rawStats.steals) || 0,
+        blocks: Number(rawStats.blocks) || 0,
+        turnovers: Number(rawStats.turnovers) || 0,
+        foulsPersonal: Number(rawStats.foulsPersonal) || 0,
+        plusMinusPoints: Number(rawStats.plusMinusPoints) || 0,
+        fieldGoalsMade: Number(rawStats.fieldGoalsMade) || 0,
+        fieldGoalsAttempted: Number(rawStats.fieldGoalsAttempted) || 0,
+        threePointersMade: Number(rawStats.threePointersMade) || 0,
+        threePointersAttempted: Number(rawStats.threePointersAttempted) || 0,
+        freeThrowsMade: Number(rawStats.freeThrowsMade) || 0,
+        freeThrowsAttempted: Number(rawStats.freeThrowsAttempted) || 0,
+    }), [rawStats]);
+
+    const teamBg = TEAM_BG_COLORS[teamTricode] || '#1D428A';
+    const teamText = TEAM_TEXT_COLORS[teamTricode] || '#FFFFFF';
 
     // Calculate rating metrics from in-game performance
     const ratings = useMemo(() => {
         const fgPct = stats.fieldGoalsAttempted > 0 ? (stats.fieldGoalsMade / stats.fieldGoalsAttempted) : 0.45;
-        const scoring = Math.min(99, Math.round(65 + stats.points * 1.5 + (fgPct >= 0.5 ? 10 : 0)));
-        const defense = Math.min(99, Math.round(60 + stats.steals * 7 + stats.blocks * 8 + (stats.foulsPersonal <= 2 ? 5 : 0)));
-        const playmaking = Math.min(99, Math.round(60 + stats.assists * 4.5 - stats.turnovers * 3));
-        const rebounding = Math.min(99, Math.round(60 + stats.reboundsTotal * 3.8));
-        const clutch = Math.min(99, Math.round(70 + (stats.plusMinusPoints > 0 ? stats.plusMinusPoints * 1.5 : 0) + (stats.points >= 20 ? 12 : 0)));
+        const scoring = Math.max(1, Math.min(99, Math.round(65 + stats.points * 1.5 + (fgPct >= 0.5 ? 10 : 0))));
+        const defense = Math.max(1, Math.min(99, Math.round(60 + stats.steals * 7 + stats.blocks * 8 + (stats.foulsPersonal <= 2 ? 5 : 0))));
+        const playmaking = Math.max(1, Math.min(99, Math.round(60 + stats.assists * 4.5 - stats.turnovers * 3)));
+        const rebounding = Math.max(1, Math.min(99, Math.round(60 + stats.reboundsTotal * 3.8)));
+        const clutch = Math.max(1, Math.min(99, Math.round(70 + (stats.plusMinusPoints > 0 ? stats.plusMinusPoints * 1.5 : 0) + (stats.points >= 20 ? 12 : 0))));
         const overall = Math.round((scoring + defense + playmaking + rebounding + clutch) / 5);
 
         return { scoring, defense, playmaking, rebounding, clutch, overall };
@@ -86,9 +111,9 @@ export function PlayerTradingCard({ player, onClose }: PlayerTradingCardProps) {
         return [
             `╔════════════════════════════════════════════════╗`,
             `║ 🏀 NBA-TUI COLLECTIBLE TRADING CARD            ║`,
-            `║ #${player.jerseyNum.padStart(2, ' ')} ${player.name.padEnd(25, ' ')} [${player.teamTricode}] [OVR: ${ratings.overall}] ║`,
+            `║ #${jerseyNum.padStart(2, ' ')} ${playerName.slice(0, 25).padEnd(25, ' ')} [${teamTricode}] [OVR: ${ratings.overall}] ║`,
             `╠════════════════════════════════════════════════╣`,
-            `║ Position: ${player.position.padEnd(6, ' ')}  ${isHot ? "🔥 HE'S ON FIRE! BOOMSHAKALAKA!" : "Classic Edition"} ║`,
+            `║ Position: ${position.slice(0, 6).padEnd(6, ' ')}  ${isHot ? "🔥 HE'S ON FIRE! BOOMSHAKALAKA!" : "Classic Edition"} ║`,
             `║ ── SKILL RATINGS ───────────────────────────── ║`,
             `║ 🎯 SCORING    [${renderBar(ratings.scoring)}] ${ratings.scoring}                     ║`,
             `║ 🛡️ DEFENSE    [${renderBar(ratings.defense)}] ${ratings.defense}                     ║`,
@@ -100,7 +125,14 @@ export function PlayerTradingCard({ player, onClose }: PlayerTradingCardProps) {
             `║ FG: ${stats.fieldGoalsMade}/${stats.fieldGoalsAttempted}  3PT: ${stats.threePointersMade}/${stats.threePointersAttempted}  FT: ${stats.freeThrowsMade}/${stats.freeThrowsAttempted}  PF: ${stats.foulsPersonal}          ║`,
             `╚════════════════════════════════════════════════╝`
         ].join('\n');
-    }, [player, stats, ratings, isHot]);
+    }, [jerseyNum, playerName, teamTricode, position, stats, ratings, isHot]);
+
+    const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        return () => {
+            if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        };
+    }, []);
 
     useInput((input, key) => {
         if (key.escape || input === 'v' || input === 'q') {
@@ -110,18 +142,20 @@ export function PlayerTradingCard({ player, onClose }: PlayerTradingCardProps) {
         if (input === 'y') {
             copyToClipboardOSC52(asciiCardText);
             setCopiedToast(true);
-            setTimeout(() => setCopiedToast(false), 2000);
+            if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+            toastTimerRef.current = setTimeout(() => setCopiedToast(false), 2000);
         }
     });
 
-    const flameColors = ['yellow', 'redBright', 'white'];
+    const flameColors = ['yellow', 'redBright', 'cyan'];
+    const badgeName = playerName.toUpperCase().slice(0, 24);
 
     return (
         <Box flexDirection="column" borderStyle="double" borderColor={isHot ? 'yellow' : 'cyan'} paddingX={2} paddingY={0} width={54}>
             {/* Top Badge */}
             <Box justifyContent="space-between">
                 <Text backgroundColor={teamBg} color={teamText} bold>
-                    {' '}{player.teamTricode} #{player.jerseyNum} {player.name.toUpperCase()}{' '}
+                    {' '}{teamTricode} #{jerseyNum} {badgeName}{' '}
                 </Text>
                 <Text bold backgroundColor="yellow" color="black">
                     {' '}OVR: {ratings.overall}{' '}
@@ -164,11 +198,11 @@ export function PlayerTradingCard({ player, onClose }: PlayerTradingCardProps) {
 
             {/* Live Performance */}
             <Box flexDirection="column" marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
-                <Text bold underline color="white">Game Performance</Text>
+                <Text bold underline>Game Performance</Text>
                 <Box justifyContent="space-between">
                     <Text bold color="yellow">{stats.points} PTS</Text>
-                    <Text bold color="white">{stats.reboundsTotal} REB</Text>
-                    <Text bold color="white">{stats.assists} AST</Text>
+                    <Text bold>{stats.reboundsTotal} REB</Text>
+                    <Text bold>{stats.assists} AST</Text>
                     <Text bold color={stats.plusMinusPoints >= 0 ? 'green' : 'red'}>
                         {stats.plusMinusPoints >= 0 ? '+' : ''}{stats.plusMinusPoints} +/-
                     </Text>

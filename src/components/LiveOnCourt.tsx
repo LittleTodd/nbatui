@@ -48,7 +48,8 @@ interface LiveOnCourtProps {
     awayTeam: TeamData;
     homeTeam: TeamData;
     isActive: boolean;          // Whether this panel has focus
-    onPlayerSelect?: (player: PlayerStats, teamTricode: string) => void;
+    highlightSelected?: boolean; // Keep selected player highlighted while inline popup card is open
+    onPlayerSelect?: (player: PlayerStats, teamTricode: string, colIndex: number) => void;
     onModalStateChange?: (isOpen: boolean) => void;
 }
 
@@ -215,7 +216,7 @@ function PlayerStatsCard({ player, teamTricode, onClose }: { player: PlayerStats
     );
 }
 
-export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect, onModalStateChange }: LiveOnCourtProps) {
+export function LiveOnCourt({ awayTeam, homeTeam, isActive, highlightSelected = false, onPlayerSelect, onModalStateChange }: LiveOnCourtProps) {
     // Selection state: 0 = away team row, 1 = home team row
     // playerIndex: 0-4 for the 5 players
     const [selectedRow, setSelectedRow] = useState(0);
@@ -280,27 +281,27 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect, onMo
             return;
         }
 
-        if (key.leftArrow) {
+        if (key.leftArrow || input === 'h') {
             setSelectedCol(prev => Math.max(0, prev - 1));
         }
-        if (key.rightArrow) {
-            const maxCol = (selectedRow === 0 ? awayOnCourt.length : homeOnCourt.length) - 1;
+        if (key.rightArrow || input === 'l') {
+            const maxCol = Math.max(0, (selectedRow === 0 ? awayOnCourt.length : homeOnCourt.length) - 1);
             setSelectedCol(prev => Math.min(maxCol, prev + 1));
         }
-        if (key.upArrow) {
+        if (key.upArrow || input === 'k') {
             setSelectedRow(0);
         }
-        if (key.downArrow) {
+        if (key.downArrow || input === 'j') {
             setSelectedRow(1);
         }
         if (key.return && highlightedPlayer) {
-            setViewingPlayerId(highlightedPlayer.personId);
-            setShowStatsCard(true);
-            onModalStateChange?.(true);
             if (onPlayerSelect) {
-                // Determine tricode for highlighted player
                 const tricode = selectedRow === 0 ? awayTeam.teamTricode : homeTeam.teamTricode;
-                onPlayerSelect(highlightedPlayer, tricode);
+                onPlayerSelect(highlightedPlayer, tricode, selectedCol);
+            } else {
+                setViewingPlayerId(highlightedPlayer.personId);
+                setShowStatsCard(true);
+                onModalStateChange?.(true);
             }
         }
     });
@@ -320,7 +321,7 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect, onMo
         teamText: string,
         rowIndex: number
     ) => {
-        const isRowSelected = isActive && selectedRow === rowIndex;
+        const isRowSelected = (isActive || highlightSelected) && selectedRow === rowIndex;
 
         return (
             <Box height={1}>
@@ -341,7 +342,7 @@ export function LiveOnCourt({ awayTeam, homeTeam, isActive, onPlayerSelect, onMo
                             <Box key={player.personId} flexGrow={1} flexBasis={0} minWidth={0} paddingRight={1}>
                                 <Text
                                     backgroundColor={isSelected ? teamBg : undefined}
-                                    color={isSelected ? teamText : 'white'}
+                                    color={isSelected ? teamText : undefined}
                                     bold={isSelected}
                                     wrap="truncate-end"
                                 >

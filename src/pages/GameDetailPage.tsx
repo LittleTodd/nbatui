@@ -11,10 +11,15 @@ import { SuperstarDuel } from '../components/SuperstarDuel.js';
 import { PlayerTradingCard, type TradingCardPlayer } from '../components/PlayerTradingCard.js';
 import { LeadTrackerChart } from '../components/charts/LeadTrackerChart.js';
 import { detectMomentumRun, checkMilestoneWatches } from '../utils/momentumDetector.js';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 
 interface GameDetailPageProps {
     game: Game;
     onBack: () => void;
+    onPrevGame?: () => void;
+    onNextGame?: () => void;
+    gameIndex?: number;
+    totalGames?: number;
 }
 
 interface TeamStanding {
@@ -27,11 +32,37 @@ interface TeamStanding {
     PlayoffRank: number;
     WINS: number;
     LOSSES: number;
-    L10: string;  // Last 10 games, e.g. "6-4"
-    strCurrentStreak: string;  // Current streak, e.g. "W 2" or "L 3"
+    L10: string;
+    strCurrentStreak: string;
 }
 
-export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
+function selectTopPerformer(boxScore: any, homeTricode: string, awayTricode: string): TradingCardPlayer | null {
+    const candidates: Array<{ player: any; teamTricode: string; score: number }> = [];
+    const collect = (players: any[] | undefined, tricode: string) => {
+        if (!Array.isArray(players)) return;
+        for (const p of players) {
+            const s = p?.statistics || {};
+            const impact = (s.points || 0) + (s.reboundsTotal || 0) * 1.2 + (s.assists || 0) * 1.5 + (s.steals || 0) * 2 + (s.blocks || 0) * 2;
+            candidates.push({ player: p, teamTricode: tricode, score: impact });
+        }
+    };
+    collect(boxScore?.homeTeam?.players, homeTricode);
+    collect(boxScore?.awayTeam?.players, awayTricode);
+    candidates.sort((a, b) => b.score - a.score);
+    const top = candidates[0];
+    if (!top) return null;
+    return {
+        personId: top.player.personId,
+        name: top.player.name || top.player.nameI || 'Player',
+        jerseyNum: top.player.jerseyNum || '0',
+        position: top.player.position || 'G',
+        teamTricode: top.teamTricode,
+        statistics: top.player.statistics || {}
+    };
+}
+
+export function GameDetailPage({ game, onBack, onPrevGame, onNextGame, gameIndex, totalGames }: GameDetailPageProps) {
+    const { columns: termWidth } = useTerminalSize();
     const [boxScore, setBoxScore] = useState<any>(null);
     const [standings, setStandings] = useState<TeamStanding[]>([]);
     const [odds, setOdds] = useState<GameOdds | null>(null);
@@ -42,52 +73,72 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     const [showShotChart, setShowShotChart] = useState(false);
     const [showDuel, setShowDuel] = useState(false);
     const [tradingCardPlayer, setTradingCardPlayer] = useState<TradingCardPlayer | null>(null);
+    const [tradingCardAnchorCol, setTradingCardAnchorCol] = useState<number | null>(null);
     const [scoreCurve, setScoreCurve] = useState<ScoreCurveData | null>(null);
-
-    // Focus state: 'stream' for play-by-play scrolling, 'oncourt' for player selection
-    const [focusMode, setFocusMode] = useState<'stream' | 'oncourt'>('stream');
     const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+    const [retryCounter, setRetryCounter] = useState(0);
 
     const isScheduled = game.gameStatus === 1;
 
-    // Fetch score curve for live/completed game
+    // Reset per-game UI state when switching games with '[' / ']'
     useEffect(() => {
-        if (!isScheduled) {
-            fetchScoreCurve(game.gameId).then(data => {
-                if (data && mountedRef.current) setScoreCurve(data);
-            });
-        }
-    }, [game.gameId, isScheduled]);
+        setBoxScore(null);
+        setPlayByPlay([]);
+        setScoreCurve(null);
+        setShowShotChart(false);
+        setShowDuel(false);
+        setTradingCardPlayer(null);
+        setTradingCardAnchorCol(null);
+        setIsStatsModalOpen(false);
+        setLoading(true);
+    }, [game.gameId]);
 
-    // Breathing animation for Live Stream indicator
-    const [streamDotDim, setStreamDotDim] = useState(false);
+    // Fetch & refresh score curve for live/completed games (per-effect cancelled flag prevents stale overwrite)
     useEffect(() => {
-        if (game.gameStatus !== 2) return;
-        const timer = setInterval(() => setStreamDotDim(v => !v), 800);
-        return () => clearInterval(timer);
-    }, [game.gameStatus]);
+        if (isScheduled) return;
+        let cancelled = false;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-    // Safe mounted tracking
-    const mountedRef = React.useRef(true);
-    useEffect(() => {
-        mountedRef.current = true;
-        return () => { mountedRef.current = false; };
-    }, []);
+        let lastCurveJson = '';
+        const fetchCurve = async () => {
+            try {
+                const data = await fetchScoreCurve(game.gameId);
+                if (!cancelled && data) {
+                    const serialized = JSON.stringify(data);
+                    if (serialized !== lastCurveJson) {
+                        lastCurveJson = serialized;
+                        setScoreCurve(data);
+                    }
+                }
+            } catch {
+                // Ignore transient errors
+            }
+            if (!cancelled && game.gameStatus === 2) {
+                timeoutId = setTimeout(fetchCurve, 30000);
+            }
+        };
 
-    // Initial Data Fetch & Polling Loop
-    // Initial Data Fetch (Odds, Standings) - Run ONCE on mount/gameId change
+        fetchCurve();
+        return () => {
+            cancelled = true;
+            if (timeoutId) clearTimeout(timeoutId);
+        };
+    }, [game.gameId, game.gameStatus, isScheduled, retryCounter]);
+
+    // Static Data Fetch for scheduled games (Odds, Standings)
     useEffect(() => {
-        let mounted = true;
+        if (!isScheduled) return;
+        let cancelled = false;
         setLoading(true);
 
         const fetchStaticData = async () => {
-            if (isScheduled) {
+            try {
                 const [standingsData, oddsData] = await Promise.all([
                     fetchStandings(),
                     fetchPolymarketOdds()
                 ]);
 
-                if (!mounted) return;
+                if (cancelled) return;
 
                 const standingsArray = standingsData?.standings || [];
                 setStandings(Array.isArray(standingsArray) ? standingsArray : []);
@@ -95,101 +146,108 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 const gameDate = game.localDate || game.gameDateET || game.gameTimeUTC?.slice(0, 10) || '';
                 const gameOdds = findGameOdds(oddsData, game.awayTeam.teamTricode, game.homeTeam.teamTricode, gameDate);
                 setOdds(gameOdds || null);
-
-                // For scheduled games, we are done after this.
-                setLoading(false);
+            } finally {
+                if (!cancelled) setLoading(false);
             }
         };
 
         fetchStaticData();
+        return () => { cancelled = true; };
+    }, [game.gameId, isScheduled, retryCounter]);
 
-        return () => { mounted = false; };
-    }, [game.gameId, isScheduled]);
-
-    // Polling Logic for Main Game Data (Box Score / Header) - Runs regardless of tab
+    // Polling Logic for Main Game Data (Box Score / Header) with per-effect cancellation
     useEffect(() => {
         if (isScheduled) return;
+        let cancelled = false;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-        let timeoutId: NodeJS.Timeout;
-
+        let lastBoxJson = '';
         const loop = async () => {
-            if (!mountedRef.current) return;
+            if (cancelled) return;
 
             try {
-                // Fetch Box Score ONLY
                 const boxData = await fetchBoxScore(game.gameId);
+                if (cancelled) return;
 
-                if (!mountedRef.current) return;
-
-                if (boxData) setBoxScore(boxData);
-                // Note: We don't set loading=false here immediately if we are waiting for initial PBP,
-                // but since they are decoupled, we can just say "Game Info Loaded".
-                // Ideally we want to show data as soon as it arrives.
+                if (boxData && boxData.awayTeam && boxData.homeTeam) {
+                    const serialized = JSON.stringify(boxData);
+                    if (serialized !== lastBoxJson) {
+                        lastBoxJson = serialized;
+                        setBoxScore(boxData);
+                    }
+                }
                 setLoading(false);
 
                 // Stop if game is final (status 3) and data confirms it
                 if (game.gameStatus === 3 && boxData?.gameStatus === 3) return;
 
-                // Determine next delay
-                let delay = 60000; // Default 1 min for Scoreboard
+                // Faster 20s sync during active play; backoff during breaks/halftime
+                let delay = 20000;
                 const statusText = boxData?.gameStatusText || '';
                 const period = boxData?.period || 0;
                 const clock = boxData?.gameClock || '';
 
                 if (statusText.toLowerCase().includes('halftime') || (period === 2 && clock === 'PT00M00.00S')) {
-                    delay = 300000; // 5 mins
+                    delay = 300000;
                 } else if (clock === 'PT00M00.00S' && period !== 2 && period < 5) {
-                    delay = 120000; // 2 mins quarter break
+                    delay = 120000;
                 }
 
-                timeoutId = setTimeout(loop, delay);
-
-            } catch (err) {
-                if (mountedRef.current) {
-                    timeoutId = setTimeout(loop, 60000);
+                if (!cancelled) {
+                    timeoutId = setTimeout(loop, delay);
+                }
+            } catch {
+                if (!cancelled) {
+                    setLoading(false);
+                    timeoutId = setTimeout(loop, 30000);
                 }
             }
         };
 
         loop();
 
-        return () => clearTimeout(timeoutId);
-    }, [game.gameId, game.gameStatus, isScheduled]);
+        return () => {
+            cancelled = true;
+            if (timeoutId) clearTimeout(timeoutId);
+        };
+    }, [game.gameId, game.gameStatus, isScheduled, retryCounter]);
 
-    // Dedicated Polling Logic for Play-by-Play & Shot Tracking
+    // Dedicated Polling Logic for Play-by-Play & Shot Tracking with per-effect cancellation
     useEffect(() => {
         if (isScheduled) return;
+        let cancelled = false;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-        let timeoutId: NodeJS.Timeout;
-        let isFetching = false;
-
+        let lastPbpKey = '';
         const fetchPBP = async () => {
-            if (!mountedRef.current || isFetching) return;
-            isFetching = true;
+            if (cancelled) return;
 
             try {
                 const pbpData = await fetchPlayByPlay(game.gameId, game.gameStatus);
-                if (mountedRef.current && pbpData?.actions) {
-                    setPlayByPlay(pbpData.actions);
+                if (!cancelled && pbpData?.actions) {
+                    const lastAction = pbpData.actions[pbpData.actions.length - 1];
+                    const key = `${pbpData.actions.length}:${lastAction?.actionNumber ?? ''}:${lastAction?.scoreHome ?? ''}-${lastAction?.scoreAway ?? ''}`;
+                    if (key !== lastPbpKey) {
+                        lastPbpKey = key;
+                        setPlayByPlay(pbpData.actions);
+                    }
                 }
-            } catch (e) {
+            } catch {
                 // Ignore errors, retry next tick
-            } finally {
-                isFetching = false;
             }
 
-            // Schedule next update if game is live
-            if (mountedRef.current && game.gameStatus === 2) {
-                // FASTER REFRESH: 15 seconds for Play-by-Play
+            if (!cancelled && game.gameStatus === 2) {
                 timeoutId = setTimeout(fetchPBP, 15000);
             }
         };
 
         fetchPBP();
 
-        return () => clearTimeout(timeoutId);
-    }, [game.gameId, game.gameStatus, isScheduled]);
-
+        return () => {
+            cancelled = true;
+            if (timeoutId) clearTimeout(timeoutId);
+        };
+    }, [game.gameId, game.gameStatus, isScheduled, retryCounter]);
 
     const momentumRun = useMemo(() => {
         return detectMomentumRun(playByPlay, game.homeTeam.teamTricode, game.awayTeam.teamTricode);
@@ -203,59 +261,54 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
     }, [boxScore, game.homeTeam.teamTricode, game.awayTeam.teamTricode]);
 
     useInput((input, key) => {
-        // Overlay modals take precedence on Esc
-        if (showShotChart) {
-            if (key.escape || input === 'c' || input === 'q') {
-                setShowShotChart(false);
-                return;
-            }
-        }
-        if (showDuel) {
-            if (key.escape || input === 'd' || input === 'q') {
-                setShowDuel(false);
-                return;
-            }
-        }
-        if (tradingCardPlayer) {
-            if (key.escape || input === 'v' || input === 'q') {
-                setTradingCardPlayer(null);
-                return;
-            }
+        // When any child overlay modal is open, let the child own ALL keyboard input
+        // to prevent double-handling or key leakage to underlying tabs/routes.
+        if (showShotChart || showDuel || tradingCardPlayer) {
+            return;
         }
 
-        // Escape exits - but if focus is on oncourt panel, return to stream first
+        // Escape / q / Backspace returns to map (unless inline stats card is open)
         if (key.escape || input === 'q' || key.backspace) {
             if (isStatsModalOpen) return;
-            if (focusMode === 'oncourt') {
-                setFocusMode('stream');
-                return;
-            }
             onBack();
             return;
         }
 
-        // Direct feature shortcuts
+        // Retry failed load
+        if (input === 'r' && !boxScore && !isScheduled) {
+            setLoading(true);
+            setRetryCounter(c => c + 1);
+            return;
+        }
+
+        // Quick game switching without returning to map
+        if (input === '[' && onPrevGame) {
+            onPrevGame();
+            return;
+        }
+        if (input === ']' && onNextGame) {
+            onNextGame();
+            return;
+        }
+
+        // Shortcuts below apply only to live/final games with loaded boxScore
+        if (isScheduled || !boxScore) {
+            return;
+        }
+
         if (input === 'c') {
-            setShowShotChart(prev => !prev);
+            setShowShotChart(true);
             return;
         }
         if (input === 'd') {
-            setShowDuel(prev => !prev);
+            setShowDuel(true);
             return;
         }
         if (input === 'v') {
-            const topHome = boxScore?.homeTeam?.players?.[0];
-            const topAway = boxScore?.awayTeam?.players?.[0];
-            const p = topHome || topAway;
-            if (p) {
-                setTradingCardPlayer({
-                    personId: p.personId,
-                    name: p.name || p.nameI || 'Player',
-                    jerseyNum: p.jerseyNum || '0',
-                    position: p.position || 'G',
-                    teamTricode: topHome ? game.homeTeam.teamTricode : game.awayTeam.teamTricode,
-                    statistics: p.statistics || {}
-                });
+            const top = selectTopPerformer(boxScore, game.homeTeam.teamTricode, game.awayTeam.teamTricode);
+            if (top) {
+                setTradingCardAnchorCol(null);
+                setTradingCardPlayer(top);
             }
             return;
         }
@@ -273,7 +326,6 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 const idx = tabs.indexOf(prev);
                 return tabs[(idx + 1) % tabs.length] || 'boxscore';
             });
-            return;
         }
     });
 
@@ -287,15 +339,19 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
     // Scheduled game: show Game Preview
     if (isScheduled) {
-        return <GamePreview game={game} standings={standings} odds={odds} />;
+        return <GamePreview game={game} standings={standings} odds={odds} termWidth={termWidth} />;
     }
 
-    // Live/completed game: show boxscore
-    if (!boxScore) {
+    // Live/completed game: error fallback with retry action
+    if (!boxScore || !boxScore.awayTeam || !boxScore.homeTeam) {
         return (
-            <Box flexDirection="column" alignItems="center">
-                <Text color="red">Failed to load game data.</Text>
-                <Text>Press Esc to return.</Text>
+            <Box flexDirection="column" alignItems="center" justifyContent="center" height={15} borderStyle="round" borderColor="red" paddingX={3}>
+                <Text bold color="red">Failed to load game data.</Text>
+                <Text dimColor>Make sure the local data-service is running.</Text>
+                <Box marginTop={1}>
+                    <Text color="cyan" bold>[r]</Text><Text dimColor> Retry  •  </Text>
+                    <Text color="magenta" bold>[Esc]</Text><Text dimColor> Return to Map</Text>
+                </Box>
             </Box>
         );
     }
@@ -328,16 +384,25 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
         );
     }
 
-    if (tradingCardPlayer) {
+    // Full-screen card only when opened via [v] outside Live Lineups;
+    // inside Live Lineups it pops out inline anchored directly under the selected player.
+    const isInlineLineupCard = Boolean(tradingCardPlayer && detailTab === 'lineups' && tradingCardAnchorCol !== null);
+    if (tradingCardPlayer && !isInlineLineupCard) {
         return (
             <Box flexDirection="column" alignItems="center" paddingX={1} paddingTop={1}>
                 <PlayerTradingCard
                     player={tradingCardPlayer}
-                    onClose={() => setTradingCardPlayer(null)}
+                    onClose={() => {
+                        setTradingCardPlayer(null);
+                        setTradingCardAnchorCol(null);
+                    }}
                 />
             </Box>
         );
     }
+
+    const isNarrowLayout = termWidth < 110;
+    const chartWidth = Math.max(30, Math.min(65, termWidth - 18));
 
     return (
         <Box flexDirection="column" paddingX={1} paddingTop={1} borderStyle="round" borderColor="cyan">
@@ -377,7 +442,7 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                     <Text bold color={detailTab === 'leadtracker' ? 'cyan' : 'gray'}>[4] Lead Tracker</Text>
                 </Box>
                 <Box>
-                    <Text color="yellow">[c] BrailleCourt™</Text>
+                    <Text color="yellow">[c] Court</Text>
                     <Text> </Text>
                     <Text color="yellow">[d] Duel</Text>
                     <Text> </Text>
@@ -385,22 +450,28 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                 </Box>
             </Box>
 
-            {/* Tab 1: Box Score & Comparison */}
+            {/* Tab 1: Box Score & Comparison (responsive stack on narrow terminals) */}
             {detailTab === 'boxscore' && (
-                <Box flexDirection="row" justifyContent="center">
+                <Box flexDirection={isNarrowLayout ? 'column' : 'row'} justifyContent="center">
                     <BoxScoreTable
-                        teamName={boxScore.awayTeam.teamCity}
+                        teamName={boxScore.awayTeam.teamCity || boxScore.awayTeam.teamTricode}
                         teamTricode={boxScore.awayTeam.teamTricode}
-                        players={boxScore.awayTeam.players}
+                        players={boxScore.awayTeam.players || []}
+                        termWidth={termWidth}
+                        stacked={isNarrowLayout}
                     />
                     <TeamStatsComparison
                         awayTeam={boxScore.awayTeam}
                         homeTeam={boxScore.homeTeam}
+                        termWidth={termWidth}
+                        stacked={isNarrowLayout}
                     />
                     <BoxScoreTable
-                        teamName={boxScore.homeTeam.teamCity}
+                        teamName={boxScore.homeTeam.teamCity || boxScore.homeTeam.teamTricode}
                         teamTricode={boxScore.homeTeam.teamTricode}
-                        players={boxScore.homeTeam.players}
+                        players={boxScore.homeTeam.players || []}
+                        termWidth={termWidth}
+                        stacked={isNarrowLayout}
                     />
                 </Box>
             )}
@@ -411,23 +482,46 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                     <LiveOnCourt
                         awayTeam={boxScore.awayTeam}
                         homeTeam={boxScore.homeTeam}
-                        isActive={true}
-                        onPlayerSelect={(p, tricode) => {
+                        isActive={!isInlineLineupCard}
+                        highlightSelected={isInlineLineupCard}
+                        onPlayerSelect={(p, tricode, colIndex) => {
+                            setTradingCardAnchorCol(colIndex);
                             setTradingCardPlayer({
                                 personId: p.personId,
-                                name: p.name || p.nameI,
-                                jerseyNum: p.jerseyNum,
-                                position: p.position,
+                                name: p.name || p.nameI || 'Player',
+                                jerseyNum: p.jerseyNum || '-',
+                                position: p.position || 'N/A',
                                 teamTricode: tricode,
-                                statistics: p.statistics
+                                statistics: p.statistics || {}
                             });
                         }}
                         onModalStateChange={setIsStatsModalOpen}
                     />
+                    {isInlineLineupCard && tradingCardPlayer && (() => {
+                        const col = tradingCardAnchorCol ?? 0;
+                        const cardWidth = 54;
+                        const innerWidth = Math.max(56, termWidth - 6);
+                        const lineupAreaWidth = Math.max(40, innerWidth - 11);
+                        const targetX = Math.round(9 + (col / 5) * lineupAreaWidth);
+                        const cardMarginLeft = Math.max(0, Math.min(targetX, Math.max(0, innerWidth - cardWidth)));
+                        const pointerPad = Math.max(2, Math.min(cardWidth - 4, targetX - cardMarginLeft + 3));
+                        return (
+                            <Box flexDirection="column" marginLeft={cardMarginLeft}>
+                                <Text color="cyan">{' '.repeat(pointerPad)}▲</Text>
+                                <PlayerTradingCard
+                                    player={tradingCardPlayer}
+                                    onClose={() => {
+                                        setTradingCardPlayer(null);
+                                        setTradingCardAnchorCol(null);
+                                    }}
+                                />
+                            </Box>
+                        );
+                    })()}
                 </Box>
             )}
 
-            {/* Tab 3: Play-by-Play Stream */}
+            {/* Tab 3: Play-by-Play Stream (uses live boxScore scores instead of stale map snapshot) */}
             {detailTab === 'playbyplay' && (
                 <Box flexDirection="column" paddingX={1} borderStyle="round" borderColor="gray">
                     <PlayByPlayStream
@@ -436,21 +530,21 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                         awayTricode={game.awayTeam.teamTricode}
                         homeName={game.homeTeam.teamName}
                         awayName={game.awayTeam.teamName}
-                        homeScore={game.homeTeam.score}
-                        awayScore={game.awayTeam.score}
-                        isLive={game.gameStatus === 2}
+                        homeScore={boxScore.homeTeam.score ?? game.homeTeam.score}
+                        awayScore={boxScore.awayTeam.score ?? game.awayTeam.score}
+                        isLive={boxScore.gameStatus === 2}
                         gameStatusText={boxScore?.gameStatusText || game.gameStatusText}
                         isActive={true}
                     />
                 </Box>
             )}
 
-            {/* Tab 4: Lead Tracker Chart */}
+            {/* Tab 4: Lead Tracker Chart (margin mode!) */}
             {detailTab === 'leadtracker' && (
                 <Box flexDirection="column" alignItems="center" paddingX={1} borderStyle="round" borderColor="gray">
                     <Box justifyContent="space-between" width="100%" marginBottom={1}>
                         <Text bold color="cyan">📈 Game Flow: Lead Margin Progression</Text>
-                        <Text dimColor>Positive = {game.homeTeam.teamTricode} Lead | Negative = {game.awayTeam.teamTricode} Lead</Text>
+                        <Text dimColor>+ = {game.homeTeam.teamTricode} Lead | - = {game.awayTeam.teamTricode} Lead</Text>
                     </Box>
                     {scoreCurve && scoreCurve.points.length > 0 ? (
                         <LeadTrackerChart
@@ -459,8 +553,9 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
                             oppColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || 'red'}
                             teamLabel={game.homeTeam.teamTricode}
                             oppLabel={game.awayTeam.teamTricode}
-                            width={65}
+                            width={chartWidth}
                             height={12}
+                            mode="margin"
                         />
                     ) : (
                         <Box height={10} alignItems="center" justifyContent="center">
@@ -472,19 +567,23 @@ export function GameDetailPage({ game, onBack }: GameDetailPageProps) {
 
             {/* Footer */}
             <Box paddingLeft={1} marginTop={1} justifyContent="space-between">
-                <Text color="magenta">[Esc] 🏠 Return to Map</Text>
-                <Text dimColor>[1-4] Tabs • [Tab] Cycle • [c] Shot Chart • [d] Duel • [v] Card</Text>
+                <Box>
+                    <Text color="magenta">[Esc] 🏠 Back</Text>
+                    {totalGames && totalGames > 1 && gameIndex !== undefined && (
+                        <Text dimColor>  •  [/] Game {gameIndex + 1}/{totalGames}</Text>
+                    )}
+                </Box>
+                <Text dimColor>[1-4] Tabs • [c] Court • [d] Duel • [v] Card</Text>
             </Box>
         </Box>
     );
 }
 
 // Game Preview component for scheduled games
-function GamePreview({ game, standings, odds }: { game: Game; standings: TeamStanding[]; odds: GameOdds | null }) {
+function GamePreview({ game, standings, odds, termWidth }: { game: Game; standings: TeamStanding[]; odds: GameOdds | null; termWidth: number }) {
     const { text: gameTime } = getGameStatusInfo(game);
-    const CONTENT_WIDTH = 60; // Slightly narrower for better fit
+    const CONTENT_WIDTH = Math.min(60, Math.max(44, termWidth - 8));
 
-    // Find standings for both teams
     const awayStanding = standings.find(s => s.TeamID === game.awayTeam.teamId);
     const homeStanding = standings.find(s => s.TeamID === game.homeTeam.teamId);
 
@@ -494,16 +593,24 @@ function GamePreview({ game, standings, odds }: { game: Game; standings: TeamSta
         return `${standing.WINS}-${standing.LOSSES} (#${standing.PlayoffRank} ${conf})`;
     };
 
+    const localTz = (() => {
+        try {
+            return Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
+                .formatToParts(new Date())
+                .find(p => p.type === 'timeZoneName')?.value || '';
+        } catch {
+            return '';
+        }
+    })();
+
     return (
         <Box flexDirection="column" paddingY={1} borderStyle="round" borderColor="cyan" alignItems="center" width="100%">
-            {/* Header */}
             <Box flexDirection="column" alignItems="center" marginBottom={1}>
                 <Text bold color="cyan">🏀 GAME PREVIEW</Text>
             </Box>
 
-            {/* Matchup */}
             <Box flexDirection="column" alignItems="center" marginBottom={1}>
-                <Text bold color="white">{game.awayTeam.teamCity} {game.awayTeam.teamName} <Text dimColor> @ </Text> {game.homeTeam.teamCity} {game.homeTeam.teamName}</Text>
+                <Text bold>{game.awayTeam.teamCity} {game.awayTeam.teamName} <Text dimColor> @ </Text> {game.homeTeam.teamCity} {game.homeTeam.teamName}</Text>
                 <Box marginTop={1}>
                     <Text bold backgroundColor={TEAM_BG_COLORS[game.awayTeam.teamTricode] || '#333'} color={TEAM_TEXT_COLORS[game.awayTeam.teamTricode] || '#ffffff'}> {game.awayTeam.teamTricode} </Text>
                     <Text color="gray">  vs  </Text>
@@ -511,16 +618,13 @@ function GamePreview({ game, standings, odds }: { game: Game; standings: TeamSta
                 </Box>
             </Box>
 
-            {/* Tip-off time */}
             <Box marginBottom={1}>
-                <Text backgroundColor="green" color="black" bold> ⏰ {gameTime} </Text>
+                <Text backgroundColor="green" color="black" bold> ⏰ {gameTime}{localTz ? ` (${localTz})` : ''} </Text>
             </Box>
 
             <Text dimColor>{'─'.repeat(CONTENT_WIDTH)}</Text>
 
-            {/* Stats Block */}
             <Box width={CONTENT_WIDTH} justifyContent="space-between" marginY={1}>
-                {/* Season Records */}
                 <Box flexDirection="column" alignItems="flex-start" width="45%">
                     <Text bold color="cyan">📊 Records</Text>
                     <Box marginTop={1} flexDirection="column">
@@ -537,7 +641,6 @@ function GamePreview({ game, standings, odds }: { game: Game; standings: TeamSta
 
                 <Box minWidth={1}><Text dimColor>│</Text></Box>
 
-                {/* Recent Form */}
                 <Box flexDirection="column" alignItems="flex-start" width="45%">
                     <Text bold color="cyan">🔥 Last 10</Text>
                     <Box marginTop={1} flexDirection="column">
@@ -559,7 +662,6 @@ function GamePreview({ game, standings, odds }: { game: Game; standings: TeamSta
                 </Box>
             </Box>
 
-            {/* Odds & Curve */}
             {odds && odds.awayOdds > 0 && (
                 <Box flexDirection="column" alignItems="center" width="100%">
                     <Text dimColor>{'─'.repeat(CONTENT_WIDTH)}</Text>
@@ -582,48 +684,47 @@ function GamePreview({ game, standings, odds }: { game: Game; standings: TeamSta
                 </Box>
             )}
 
-            {/* Footer */}
             <Box borderStyle="single" borderTop={true} borderBottom={false} borderLeft={false} borderRight={false} borderColor="gray" paddingTop={1} width={CONTENT_WIDTH} justifyContent="center">
-                <Text dimColor>Press Esc to go back</Text>
+                <Text dimColor>[Esc] Back  •  [/] Prev/Next Game</Text>
             </Box>
         </Box>
     );
 }
 
-const Divider = () => (
-    <Box marginY={1} width="100%" justifyContent="center">
-        <Text dimColor>──────────────────────────────────────────────────</Text>
-    </Box>
-);
-
-const BoxScoreTable = ({ teamName, teamTricode, players }: { teamName: string, teamTricode: string, players: any[] }) => {
-    // Sort active players by points
-    const activePlayers = players
+const BoxScoreTable = ({
+    teamName,
+    teamTricode,
+    players,
+    termWidth,
+    stacked
+}: {
+    teamName: string;
+    teamTricode: string;
+    players: any[];
+    termWidth: number;
+    stacked: boolean;
+}) => {
+    const activePlayers = Array.isArray(players)
         ? players
-            .filter((p: any) => p.played === '1')
-            .sort((a: any, b: any) => b.statistics.points - a.statistics.points)
-            .slice(0, 10)
+            .filter((p: any) => p?.played === '1')
+            .sort((a: any, b: any) => (b?.statistics?.points || 0) - (a?.statistics?.points || 0))
+            .slice(0, stacked ? 6 : 10)
         : [];
 
     const teamBg = TEAM_BG_COLORS[teamTricode] || '#333';
 
-    // Dynamic width calculation
-    // Each BoxScore table gets roughly 35% of terminal width
-    const termWidth = process.stdout.columns || 180;
-    const tableWidth = Math.floor(termWidth * 0.35);
-    const statColWidth = 5; // Minimum for PTS, REB, AST
-    const nameWidth = Math.max(12, tableWidth - statColWidth * 3 - 8); // Remaining for name
+    const tableWidth = stacked ? Math.max(36, termWidth - 8) : Math.floor(termWidth * 0.35);
+    const statColWidth = 5;
+    const nameWidth = Math.max(12, tableWidth - statColWidth * 3 - 8);
 
     return (
-        <Box flexDirection="column" marginRight={1} borderStyle="round" borderColor={teamBg} padding={1} flexShrink={1}>
-            {/* Header with Team Color Background */}
+        <Box flexDirection="column" marginRight={stacked ? 0 : 1} marginBottom={stacked ? 1 : 0} borderStyle="round" borderColor={teamBg} padding={1} flexShrink={1}>
             <Box marginBottom={1}>
                 <Text bold backgroundColor={teamBg} color={TEAM_TEXT_COLORS[teamTricode] || '#ffffff'}> {teamName} </Text>
                 <Text bold> TOP PERFORMERS</Text>
             </Box>
 
             <Box flexDirection="column">
-                {/* Table Header */}
                 <Box borderStyle="single" borderBottom={true} borderTop={false} borderLeft={false} borderRight={false} borderColor="gray" marginBottom={1}>
                     <Box width={nameWidth}><Text dimColor>PLAYER</Text></Box>
                     <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>PTS</Text></Box>
@@ -631,21 +732,21 @@ const BoxScoreTable = ({ teamName, teamTricode, players }: { teamName: string, t
                     <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>AST</Text></Box>
                 </Box>
 
-                {/* Rows */}
-                {activePlayers.map((p: any) => {
-                    // Smart name formatting based on available width
-                    let displayName = p.nameI || '';
+                {activePlayers.map((p: any, idx: number) => {
+                    let displayName = String(p?.nameI || p?.name || 'Player');
                     if (displayName.length > nameWidth) {
-                        const parts = displayName.split(' ');
-                        displayName = parts[0].charAt(0) + '. ' + parts.slice(1).join(' ');
-                        if (displayName.length > nameWidth) displayName = displayName.slice(0, nameWidth - 2) + '..';
+                        const parts = displayName.split(' ').filter(Boolean);
+                        const first = parts[0] || '';
+                        displayName = first ? `${first.charAt(0)}. ${parts.slice(1).join(' ')}` : displayName;
+                        if (displayName.length > nameWidth) displayName = displayName.slice(0, Math.max(1, nameWidth - 2)) + '..';
                     }
+                    const stats = p?.statistics || {};
                     return (
-                        <Box key={p.personId} marginBottom={0}>
-                            <Box width={nameWidth}><Text color="white" bold>{displayName}</Text></Box>
-                            <Box width={statColWidth} justifyContent="flex-end"><Text bold color="cyan">{p.statistics.points}</Text></Box>
-                            <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>{p.statistics.reboundsTotal}</Text></Box>
-                            <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>{p.statistics.assists}</Text></Box>
+                        <Box key={p?.personId ?? idx} marginBottom={0}>
+                            <Box width={nameWidth}><Text bold>{displayName}</Text></Box>
+                            <Box width={statColWidth} justifyContent="flex-end"><Text bold color="cyan">{stats.points ?? 0}</Text></Box>
+                            <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>{stats.reboundsTotal ?? 0}</Text></Box>
+                            <Box width={statColWidth} justifyContent="flex-end"><Text dimColor>{stats.assists ?? 0}</Text></Box>
                         </Box>
                     );
                 })}
@@ -654,7 +755,6 @@ const BoxScoreTable = ({ teamName, teamTricode, players }: { teamName: string, t
     );
 };
 
-// Quarter-by-Quarter Scoring Table
 interface Period {
     period: number;
     periodType: string;
@@ -679,7 +779,6 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
     const awayPeriods = awayTeam.periods || [];
     const homePeriods = homeTeam.periods || [];
 
-    // Breathing animation state for live quarter
     const [breathDim, setBreathDim] = useState(false);
     useEffect(() => {
         if (!isLive || currentPeriod === 0) return;
@@ -687,16 +786,10 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
         return () => clearInterval(timer);
     }, [isLive, currentPeriod]);
 
-    // Determine max periods (handles OT)
     const maxPeriods = Math.max(awayPeriods.length, homePeriods.length, 4);
 
-    // Get period labels
-    const getPeriodLabel = (idx: number) => {
-        if (idx < 4) return `Q${idx + 1}`;
-        return `OT${idx - 3}`;
-    };
+    const getPeriodLabel = (idx: number) => (idx < 4 ? `Q${idx + 1}` : `OT${idx - 3}`);
 
-    // Get score for a period (0 if not available)
     const getScore = (periods: Period[], idx: number) => {
         const period = periods.find(p => p.period === idx + 1);
         return period?.score ?? '-';
@@ -704,8 +797,6 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
 
     const awayBg = TEAM_BG_COLORS[awayTeam.teamTricode] || '#333';
     const homeBg = TEAM_BG_COLORS[homeTeam.teamTricode] || '#333';
-
-    // Check if a period is the current live period
     const isCurrentPeriod = (idx: number) => isLive && (idx + 1) === currentPeriod;
 
     const renderTimeouts = (stats?: any) => {
@@ -725,7 +816,6 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
         <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="gray" paddingX={1} flexGrow={1}>
             <Text bold color="cyan">📊 Scoring by Quarter</Text>
             <Box flexDirection="column" marginTop={1}>
-                {/* Header Row */}
                 <Box marginBottom={1}>
                     <Box width={7}><Text dimColor>TEAM</Text></Box>
                     {Array.from({ length: maxPeriods }, (_, i) => (
@@ -748,7 +838,7 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
                     {Array.from({ length: maxPeriods }, (_, i) => (
                         <Box key={i} width={6} justifyContent="center">
                             <Text
-                                color={isCurrentPeriod(i) ? 'green' : 'white'}
+                                color={isCurrentPeriod(i) ? 'green' : undefined}
                                 bold={isCurrentPeriod(i)}
                                 dimColor={isCurrentPeriod(i) && breathDim}
                             >
@@ -757,11 +847,11 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
                         </Box>
                     ))}
                     <Box width={7} justifyContent="flex-end">
-                        <Text bold color={awayTeam.score > homeTeam.score ? 'green' : 'white'}>
+                        <Text bold color={awayTeam.score > homeTeam.score ? 'green' : undefined}>
                             {awayTeam.score}
                         </Text>
                     </Box>
-                    {awayTeam.statistics?.inBonus === "1" && (
+                    {awayTeam.statistics?.inBonus === '1' && (
                         <Box marginLeft={1}><Text bold backgroundColor="red" color="white"> BONUS </Text></Box>
                     )}
                     {renderTimeouts(awayTeam.statistics)}
@@ -775,7 +865,7 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
                     {Array.from({ length: maxPeriods }, (_, i) => (
                         <Box key={i} width={6} justifyContent="center">
                             <Text
-                                color={isCurrentPeriod(i) ? 'green' : 'white'}
+                                color={isCurrentPeriod(i) ? 'green' : undefined}
                                 bold={isCurrentPeriod(i)}
                                 dimColor={isCurrentPeriod(i) && breathDim}
                             >
@@ -784,11 +874,11 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
                         </Box>
                     ))}
                     <Box width={7} justifyContent="flex-end">
-                        <Text bold color={homeTeam.score > awayTeam.score ? 'green' : 'white'}>
+                        <Text bold color={homeTeam.score > awayTeam.score ? 'green' : undefined}>
                             {homeTeam.score}
                         </Text>
                     </Box>
-                    {homeTeam.statistics?.inBonus === "1" && (
+                    {homeTeam.statistics?.inBonus === '1' && (
                         <Box marginLeft={1}><Text bold backgroundColor="red" color="white"> BONUS </Text></Box>
                     )}
                     {renderTimeouts(homeTeam.statistics)}
@@ -798,8 +888,6 @@ const QuarterScoreTable = ({ awayTeam, homeTeam, currentPeriod = 0, isLive = fal
     );
 };
 
-
-// Team Stats Comparison Component (ESPN-style)
 interface TeamStats {
     fieldGoalsMade?: number;
     fieldGoalsAttempted?: number;
@@ -822,10 +910,17 @@ interface TeamWithStats {
 }
 
 const StatBar = ({ leftVal, rightVal, leftColor, rightColor, barWidth = 26 }: { leftVal: number; rightVal: number; leftColor: string; rightColor: string; barWidth?: number }) => {
-    const total = leftVal + rightVal || 1;
-    const leftPct = leftVal / total;
-    const leftBars = Math.round(leftPct * barWidth);
-    const rightBars = barWidth - leftBars;
+    const safeWidth = Math.max(2, Math.floor(barWidth));
+    const safeLeft = Number.isFinite(leftVal) ? Math.max(0, leftVal) : 0;
+    const safeRight = Number.isFinite(rightVal) ? Math.max(0, rightVal) : 0;
+    const total = safeLeft + safeRight;
+
+    if (total === 0) {
+        return <Text dimColor>{'─'.repeat(safeWidth)}</Text>;
+    }
+
+    const leftBars = Math.max(0, Math.min(safeWidth, Math.round((safeLeft / total) * safeWidth)));
+    const rightBars = safeWidth - leftBars;
 
     return (
         <Text>
@@ -835,8 +930,7 @@ const StatBar = ({ leftVal, rightVal, leftColor, rightColor, barWidth = 26 }: { 
     );
 };
 
-// Color utility functions for collision detection
-function hexToRgb(hex: string): { r: number, g: number, b: number } | null {
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     if (!result || !result[1] || !result[2] || !result[3]) return null;
     return {
@@ -849,9 +943,7 @@ function hexToRgb(hex: string): { r: number, g: number, b: number } | null {
 function getColorDistance(hex1: string, hex2: string): number {
     const rgb1 = hexToRgb(hex1);
     const rgb2 = hexToRgb(hex2);
-    if (!rgb1 || !rgb2) return 1000; // Return huge distance if invalid
-
-    // Euclidean distance in RGB space
+    if (!rgb1 || !rgb2) return 1000;
     return Math.sqrt(
         Math.pow(rgb1.r - rgb2.r, 2) +
         Math.pow(rgb1.g - rgb2.g, 2) +
@@ -859,7 +951,17 @@ function getColorDistance(hex1: string, hex2: string): number {
     );
 }
 
-const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; homeTeam: TeamWithStats }) => {
+const TeamStatsComparison = ({
+    awayTeam,
+    homeTeam,
+    termWidth,
+    stacked
+}: {
+    awayTeam: TeamWithStats;
+    homeTeam: TeamWithStats;
+    termWidth: number;
+    stacked: boolean;
+}) => {
     const awayStats = awayTeam.statistics || {};
     const homeStats = homeTeam.statistics || {};
 
@@ -868,13 +970,9 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
 
     let awayBarColor = awayBg;
     let homeBarColor = homeBg;
-
-    // Intelligent Color Collision Detection for BARS only
-    // Threshold increased to 80 to catch dark-on-dark cases like DEN vs BKN
     const COLLISION_THRESHOLD = 80;
 
     if (getColorDistance(awayBarColor, homeBarColor) < COLLISION_THRESHOLD) {
-        // Strategy: Try swapping the Away team's BAR color to their TEXT color.
         const awayText = TEAM_TEXT_COLORS[awayTeam.teamTricode] || '#ffffff';
         if (getColorDistance(awayText, homeBarColor) > COLLISION_THRESHOLD) {
             awayBarColor = awayText;
@@ -929,7 +1027,7 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
         },
         {
             label: 'Turnovers',
-            awayVal: homeStats.turnovers || 0, // Inverted
+            awayVal: homeStats.turnovers || 0, // Inverted (fewer turnovers is better)
             homeVal: awayStats.turnovers || 0,
             awayDisplay: String(awayStats.turnovers || 0),
             homeDisplay: String(homeStats.turnovers || 0),
@@ -943,22 +1041,16 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
         },
     ];
 
-    // Calculate dynamic widths based on terminal size
-    // BoxScore tables get 35% each (70% total), Team Stats gets remaining 30%
-    const termWidth = process.stdout.columns || 180;
-    const panelWidth = Math.floor(termWidth * 0.30) - 6; // 30% minus borders/padding
-
-    const sideWidth = 8; // Width for value columns (e.g., "56%", "(55-98)")
-    const barWidth = Math.max(10, panelWidth - sideWidth * 2); // Remaining for bar
+    const panelWidth = stacked ? Math.max(36, termWidth - 10) : Math.floor(termWidth * 0.30) - 6;
+    const sideWidth = 8;
+    const barWidth = Math.max(10, panelWidth - sideWidth * 2);
 
     return (
-        <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginX={1}>
-            {/* Header: Title */}
+        <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginX={stacked ? 0 : 1} marginBottom={stacked ? 1 : 0}>
             <Box justifyContent="center" marginBottom={1}>
                 <Text bold color="cyan">📊 Team Stats</Text>
             </Box>
 
-            {/* Team Codes - USE ORIGINAL BG COLORS HERE */}
             <Box marginBottom={1}>
                 <Box width={sideWidth} justifyContent="flex-start">
                     <Text bold backgroundColor={awayBg} color={TEAM_TEXT_COLORS[awayTeam.teamTricode] || '#ffffff'}> {awayTeam.teamTricode} </Text>
@@ -969,22 +1061,23 @@ const TeamStatsComparison = ({ awayTeam, homeTeam }: { awayTeam: TeamWithStats; 
                 </Box>
             </Box>
 
-            {/* Stats Rows */}
             {stats.map((stat, i) => (
                 <Box key={i} flexDirection="column" marginBottom={0}>
-                    {/* Main row: Away Value | Bar Chart | Home Value */}
                     <Box>
                         <Box width={sideWidth} justifyContent="flex-start">
-                            <Text bold color={stat.awayVal >= stat.homeVal ? 'green' : 'white'}>{stat.awayDisplay}</Text>
+                            <Text bold color={stat.awayVal > stat.homeVal ? 'green' : undefined}>
+                                {stat.awayVal > stat.homeVal ? '★ ' : ''}{stat.awayDisplay}
+                            </Text>
                         </Box>
                         <Box width={barWidth} justifyContent="center">
                             <StatBar leftVal={stat.awayVal} rightVal={stat.homeVal} leftColor={awayBarColor} rightColor={homeBarColor} barWidth={barWidth} />
                         </Box>
                         <Box width={sideWidth} justifyContent="flex-end">
-                            <Text bold color={stat.homeVal >= stat.awayVal ? 'green' : 'white'}>{stat.homeDisplay}</Text>
+                            <Text bold color={stat.homeVal > stat.awayVal ? 'green' : undefined}>
+                                {stat.homeDisplay}{stat.homeVal > stat.awayVal ? ' ★' : ''}
+                            </Text>
                         </Box>
                     </Box>
-                    {/* Sub row: (M-A) | Label | (M-A) */}
                     <Box>
                         <Box width={sideWidth} justifyContent="flex-start">
                             <Text dimColor>{stat.awaySub || ''}</Text>
