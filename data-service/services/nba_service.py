@@ -75,7 +75,7 @@ class NBAService:
                         game["gameDateET"] = utc_to_et_date(game_time) if game_time else nba_game_date
 
                     filtered_games = [g for g in live_games if g.get("localDate") == date_str]
-                    if filtered_games:
+                    if filtered_games and len(nba_date_candidates(date_str)) == 1:
                         print(
                             f"DEBUG: Live API (NBA date: {nba_game_date}) has "
                             f"{len(filtered_games)} games for local date {date_str}"
@@ -209,7 +209,7 @@ class NBAService:
         """
         from datetime import datetime, timezone
 
-        from .timezone_utils import utc_to_et_date
+        from .timezone_utils import utc_to_et_date, utc_to_local_date
 
         games: dict[str, dict[str, Any]] = {}
 
@@ -244,14 +244,16 @@ class NBAService:
                 home_score = home_raw.get("score")
                 away_score = away_raw.get("score")
 
+                game_time_utc = g.get("gameTimeUTC", "")
                 games[game_id] = {
                     "gameId": game_id,
                     "gameStatus": int(g.get("gameStatus", 1)),
                     "gameStatusText": g.get("gameStatusText", ""),
                     "period": g.get("period", 0),
                     "gameClock": self._parse_game_clock(g.get("gameClock", "")) if g.get("gameClock") else "",
-                    "gameTimeUTC": g.get("gameTimeUTC", ""),
+                    "gameTimeUTC": game_time_utc,
                     "gameDateET": et_date,
+                    "localDate": utc_to_local_date(game_time_utc) if game_time_utc else None,
                     "homeTeam": {**home_team, "score": home_score if home_score is not None else 0},
                     "awayTeam": {**away_team, "score": away_score if away_score is not None else 0},
                 }
@@ -478,16 +480,15 @@ class NBAService:
     
     def _parse_game_clock(self, iso_clock: str) -> str:
         """
-        Parse ISO 8601 duration format (PT06M58.00S) to human readable (6:58).
+        Parse ISO 8601 duration format (PT06M58.00S or PT45.20S) to human readable (6:58 / 0:45).
         """
         if not iso_clock or not iso_clock.startswith('PT'):
             return iso_clock
-        
+
         import re
-        # Match pattern like PT06M58.00S or PT12M00.00S
-        match = re.match(r'PT(\d+)M([\d.]+)S', iso_clock)
+        match = re.match(r'PT(?:(\d+)M)?([\d.]+)S', iso_clock)
         if match:
-            minutes = int(match.group(1))
+            minutes = int(match.group(1) or 0)
             seconds = int(float(match.group(2)))
             return f"{minutes}:{seconds:02d}"
         return iso_clock
@@ -672,19 +673,19 @@ class NBAService:
                             for row in rows:
                                 player_stats = dict(zip(headers, row))
                                 pid = player_stats.get('PLAYER_ID')
-                                gp = player_stats.get('GP', 1) or 1
-                                # Calculate per-game averages
+                                gp = player_stats.get('GP') or 1
+                                # Safely coalesce None stats to 0 before arithmetic
                                 stats_lookup[pid] = {
                                     'gp': gp,
-                                    'ppg': round(player_stats.get('PTS', 0) / gp, 1),
-                                    'rpg': round(player_stats.get('REB', 0) / gp, 1),
-                                    'apg': round(player_stats.get('AST', 0) / gp, 1),
-                                    'spg': round(player_stats.get('STL', 0) / gp, 1),
-                                    'bpg': round(player_stats.get('BLK', 0) / gp, 1),
-                                    'fgPct': round(player_stats.get('FG_PCT', 0) * 100, 1),
-                                    'fg3Pct': round(player_stats.get('FG3_PCT', 0) * 100, 1),
-                                    'ftPct': round(player_stats.get('FT_PCT', 0) * 100, 1),
-                                    'min': round(player_stats.get('MIN', 0) / gp, 1),
+                                    'ppg': round((player_stats.get('PTS') or 0) / gp, 1),
+                                    'rpg': round((player_stats.get('REB') or 0) / gp, 1),
+                                    'apg': round((player_stats.get('AST') or 0) / gp, 1),
+                                    'spg': round((player_stats.get('STL') or 0) / gp, 1),
+                                    'bpg': round((player_stats.get('BLK') or 0) / gp, 1),
+                                    'fgPct': round((player_stats.get('FG_PCT') or 0) * 100, 1),
+                                    'fg3Pct': round((player_stats.get('FG3_PCT') or 0) * 100, 1),
+                                    'ftPct': round((player_stats.get('FT_PCT') or 0) * 100, 1),
+                                    'min': round((player_stats.get('MIN') or 0) / gp, 1),
                                 }
                 
                 # Merge stats into players
@@ -956,9 +957,10 @@ class NBAService:
             except Exception as e:
                 print(f"[TeamInfo] TeamInfoCommon failed: {e}")
             
-            # Cache the result
-            cache_service.cache_by_key(cache_key, result, ttl_hours=168)
-            
+            # Only cache when upstream actually returned data (avoid 7-day empty cache poisoning)
+            if result['background'] or result['seasonInfo']:
+                cache_service.cache_by_key(cache_key, result, ttl_hours=168)
+
             return result
         except Exception as e:
             print(f"[TeamInfo] API failed for team {team_id}: {e}")
